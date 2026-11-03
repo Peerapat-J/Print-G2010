@@ -28,3 +28,27 @@ cp "$FILTER" "$B/usr/libexec/cups/filter/"
 cp -P "$STAGE"/usr/local/lib/libgutenprint*.dylib "$B/usr/local/lib/"
 cp "$STAGE"/usr/local/lib/gutenprint/5.3/modules/*.so "$B/usr/local/lib/gutenprint/5.3/modules/"
 cp -R "$STAGE/usr/local/share/gutenprint/5.3/xml" "$B/usr/local/share/gutenprint/5.3/"
+
+# The filter was linked against /usr/local/lib/libgutenprint.9.dylib and relied on
+# DYLD_LIBRARY_PATH to find the bundled copy. Hardened-runtime binaries ignore that variable,
+# so point it at the library next to it instead (usr/libexec/cups/filter -> usr/local/lib).
+BUNDLED_FILTER="$B/usr/libexec/cups/filter/rastertogutenprint.5.3"
+install_name_tool -change /usr/local/lib/libgutenprint.9.dylib \
+  @loader_path/../../../local/lib/libgutenprint.9.dylib "$BUNDLED_FILTER"
+install_name_tool -id @loader_path/libgutenprint.9.dylib "$B/usr/local/lib/libgutenprint.9.dylib"
+
+# Xcode seals Resources but does not sign executables inside it, and changing the install
+# names invalidated the linker's signatures. Sign every Mach-O file with the build's identity;
+# a notarized build needs the hardened runtime and a secure timestamp on each of them.
+IDENTITY="${EXPANDED_CODE_SIGN_IDENTITY:-${CODE_SIGN_IDENTITY:--}}"
+[ -n "$IDENTITY" ] || IDENTITY="-"
+FLAGS=(--force --sign "$IDENTITY")
+if [ "$IDENTITY" != "-" ]; then FLAGS+=(--timestamp); fi
+if [ "${ENABLE_HARDENED_RUNTIME:-NO}" = "YES" ]; then FLAGS+=(--options runtime); fi
+find "$DEST" -type f ! -type l | while read -r f; do
+  if file -b "$f" | grep -q "Mach-O"; then codesign "${FLAGS[@]}" "$f"; fi
+done
+
+# This phase runs on every build, so on an incremental build it changes the bundle after
+# Xcode last sealed it. Seal the app again here so its signature always matches its contents.
+codesign "${FLAGS[@]}" "$TARGET_BUILD_DIR/$WRAPPER_NAME"
