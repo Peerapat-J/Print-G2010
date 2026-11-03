@@ -450,6 +450,7 @@ struct FileRow: View {
     @State private var pageMode = PageMode.all
     @State private var pageSpec = ""
     @State private var pageCount: Int?
+    @State private var hovering = false
 
     var body: some View {
         let status = model.status(url)
@@ -489,6 +490,11 @@ struct FileRow: View {
             .disabled({ if case .working = status { return true } else { return false } }())
             .help("Remove from list")
         }
+        .padding(.horizontal, 6)
+        .padding(.vertical, 3)
+        .background(RoundedRectangle(cornerRadius: 6).fill(Color.primary.opacity(hovering ? 0.1 : 0)))
+        .animation(.easeOut(duration: 0.12), value: hovering)
+        .onHover { hovering = $0 }
     }
 
     private func openPopover() {
