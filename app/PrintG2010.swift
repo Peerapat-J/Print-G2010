@@ -223,8 +223,8 @@ final class PrintModel: ObservableObject {
         if rejected.isEmpty {
             if case .failed = state, !running { state = .idle }
         } else if !running {
-            state = .failed("พิมพ์ไฟล์ Word/Pages/Office โดยตรงไม่ได้: " + rejected.joined(separator: ", ")
-                            + "\nให้ Export เป็น PDF ก่อน (File > Export As > PDF)")
+            state = .failed("Word, Pages and other Office files cannot be printed directly: " + rejected.joined(separator: ", ")
+                            + "\nExport them to PDF first (File > Export As > PDF).")
         }
     }
 
@@ -266,7 +266,7 @@ final class PrintModel: ObservableObject {
         }
         if !running {
             running = true
-            state = .working("กำลังเริ่ม…")
+            state = .working("Starting…")
             Task { await self.drain() }
         }
     }
@@ -284,7 +284,7 @@ final class PrintModel: ObservableObject {
                 for j in queue { fileStatus[j.url] = .waiting }
                 queue = []
                 if dropped > 0, case .failed(let msg) = state {
-                    state = .failed(msg + "\nยกเลิกคิวที่เหลืออีก \(dropped) ไฟล์")
+                    state = .failed(msg + "\nCancelled \(dropped) more queued file(s).")
                 }
                 running = false
                 return
@@ -292,8 +292,8 @@ final class PrintModel: ObservableObject {
         }
         let took = Int(Date().timeIntervalSince(began))
         state = .done(Engine.dryRun
-                      ? "ทดสอบแปลงไฟล์เรียบร้อย (\(finished) ไฟล์) ยังไม่ได้ส่งไปเครื่องพิมพ์"
-                      : "พิมพ์เสร็จแล้ว (\(finished) ไฟล์) ใช้เวลา \(took) วินาที")
+                      ? "Test run finished (\(finished) file(s)); nothing was sent to the printer."
+                      : "Finished printing \(finished) file(s) in \(took) s.")
         running = false
     }
 
@@ -308,7 +308,7 @@ final class PrintModel: ObservableObject {
         args.append(file.path)
 
         let run = FileRun()
-        fileStatus[file] = .working("กำลังเตรียม")
+        fileStatus[file] = .working("Preparing")
         Task {
             let r = await Engine.run(Engine.script, args) { line in
                 guard line.hasPrefix("@@") else { return }
@@ -330,7 +330,7 @@ final class PrintModel: ObservableObject {
                 let detail = r.stderr.split(separator: "\n")
                     .filter { !$0.hasPrefix("@@") }.suffix(3).joined(separator: "\n")
                 fileStatus[file] = .failed
-                state = .failed("พิมพ์ \(name) ไม่สำเร็จ\n\(detail)")
+                state = .failed("Could not print \(name)\n\(detail)")
                 return false
             }
             if run.result != nil && queued == 0 {
@@ -340,18 +340,18 @@ final class PrintModel: ObservableObject {
             }
             if run.result != nil && Date().timeIntervalSince(lastProgress) > 180 {
                 fileStatus[file] = .failed
-                state = .failed("\(name): งานค้างอยู่ในคิวนานเกินไป ตรวจที่เครื่องพิมพ์ว่าเปิดอยู่ มีกระดาษ และไม่มีไฟเตือน")
+                state = .failed("\(name): the job has been stuck in the queue for too long. Check that the printer is on, has paper and shows no warning light.")
                 return false
             }
 
             let elapsed = Int(Date().timeIntervalSince(start))
-            let waiting = queue.isEmpty ? "" : " · รอคิวอีก \(queue.count) ไฟล์"
+            let waiting = queue.isEmpty ? "" : " · \(queue.count) more waiting"
             if run.jobs.isEmpty {
-                state = .working("กำลังเตรียมไฟล์ \(name) (\(elapsed) วินาที)\(waiting)")
+                state = .working("Preparing \(name) (\(elapsed) s)\(waiting)")
             } else {
-                fileStatus[file] = .working("พิมพ์แล้ว \(printed)/\(run.total) หน้า")
-                state = .working("\(name) — ส่งแล้ว \(run.sent)/\(run.total) หน้า · "
-                                 + "พิมพ์แล้ว \(printed)/\(run.total) หน้า (\(elapsed) วินาที)\(waiting)")
+                fileStatus[file] = .working("Printed \(printed)/\(run.total) pages")
+                state = .working("\(name) — sent \(run.sent)/\(run.total) pages · "
+                                 + "printed \(printed)/\(run.total) pages (\(elapsed) s)\(waiting)")
             }
             try? await Task.sleep(nanoseconds: 1_000_000_000)
         }
@@ -393,7 +393,7 @@ struct FileRow: View {
                 .toggleStyle(.checkbox)
                 .labelsHidden()
                 .disabled(status.isActive)
-                .help("ติ๊กไฟล์ที่ต้องการพิมพ์ด้วยปุ่ม “พิมพ์ที่เลือก”")
+                .help("Tick the files to print with “Print Selected”")
             Image(nsImage: NSWorkspace.shared.icon(forFile: url.path))
                 .resizable().frame(width: 24, height: 24)
             VStack(alignment: .leading, spacing: 1) {
@@ -409,31 +409,31 @@ struct FileRow: View {
             }
             .buttonStyle(.plain)
             .disabled(status.isActive || !model.printer.canAcceptJobs)
-            .help("พิมพ์ไฟล์นี้")
+            .help("Print this file")
             .popover(isPresented: $askCopies, arrowEdge: .bottom) { copiesPopover }
             Button { model.remove(url) } label: {
                 Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary)
             }
             .buttonStyle(.plain)
             .disabled({ if case .working = status { return true } else { return false } }())
-            .help("เอาออกจากรายการ")
+            .help("Remove from list")
         }
     }
 
     private var copiesPopover: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
-                Text("จำนวนชุด")
+                Text("Copies")
                 Spacer()
                 CopiesField(text: $rowCopies)
             }
             if parseCopies(rowCopies) == nil {
-                Text("กรอกจำนวนชุดเป็นตัวเลข 1–99").font(.caption).foregroundStyle(.red)
+                Text("Enter a number from 1 to 99").font(.caption).foregroundStyle(.red)
             }
             HStack {
                 Spacer()
-                Button("ยกเลิก") { askCopies = false }
-                Button("พิมพ์") {
+                Button("Cancel") { askCopies = false }
+                Button("Print") {
                     if let n = parseCopies(rowCopies) {
                         askCopies = false
                         model.enqueue([url], copies: n)
@@ -451,10 +451,10 @@ struct FileRow: View {
     @ViewBuilder private func badge(_ status: FileStatus) -> some View {
         switch status {
         case .waiting: EmptyView()
-        case .queued: capsule("รอคิว", .blue)
+        case .queued: capsule("Queued", .blue)
         case .working(let text): capsule(text, .orange)
-        case .done: capsule("✓ พิมพ์แล้ว", .green)
-        case .failed: capsule("ไม่สำเร็จ", .red)
+        case .done: capsule("✓ Printed", .green)
+        case .failed: capsule("Failed", .red)
         }
     }
 
@@ -484,22 +484,22 @@ struct ContentView: View {
             fileArea
 
             HStack {
-                Button("เพิ่มไฟล์…") { chooseFiles() }
+                Button("Add Files…") { chooseFiles() }
                 if !model.files.isEmpty {
-                    Button("ล้างรายการ") { model.clear() }
+                    Button("Clear List") { model.clear() }
                         .disabled(model.busy)
                 }
                 Spacer()
-                Text("จำนวนชุดต่อไฟล์")
+                Text("Copies per file")
                 CopiesField(text: $model.copiesText)
             }
-            .help("จำนวนชุดนี้ใช้กับปุ่ม “พิมพ์ที่เลือก” ส่วนปุ่มเครื่องพิมพ์ที่แต่ละไฟล์จะถามจำนวนชุดเอง")
+            .help("Used by “Print Selected”. The printer button on each file asks for its own copies.")
             if model.copies == nil {
-                Text("กรอกจำนวนชุดเป็นตัวเลข 1–99")
+                Text("Enter a number from 1 to 99")
                     .font(.caption).foregroundStyle(.red)
                     .frame(maxWidth: .infinity, alignment: .trailing)
             }
-            Toggle("พิมพ์จากหน้าสุดท้ายก่อน (กองกระดาษที่ออกมาเรียงหน้า 1 อยู่บนสุด)", isOn: $model.reverseOrder)
+            Toggle("Print last page first (stack comes out with page 1 on top)", isOn: $model.reverseOrder)
                 .toggleStyle(.checkbox)
                 .disabled(model.busy)
 
@@ -507,7 +507,7 @@ struct ContentView: View {
                 model.printSelected()
             } label: {
                 let n = model.selectedFiles.count
-                Text(n > 0 ? "พิมพ์ที่เลือก (\(n) ไฟล์)" : "พิมพ์ที่เลือก")
+                Text(n > 0 ? "Print Selected (\(n) \(n == 1 ? "file" : "files"))" : "Print Selected")
                     .frame(maxWidth: .infinity).padding(.vertical, 4)
             }
             .keyboardShortcut(.defaultAction)
@@ -525,12 +525,12 @@ struct ContentView: View {
     @ViewBuilder private var printerBadge: some View {
         let (color, text): (Color, String) = {
             switch model.printer {
-            case .checking: return (.gray, "กำลังตรวจสอบเครื่องพิมพ์…")
-            case .ready: return (.green, "เครื่องพิมพ์พร้อม")
-            case .printing: return (.orange, "เครื่องพิมพ์กำลังทำงาน")
-            case .offline: return (.red, "ไม่พบเครื่องพิมพ์ — เปิดเครื่องและตรวจสาย USB")
-            case .stopped: return (.red, "คิวพิมพ์ถูกหยุด — ตรวจกระดาษ/ไฟเตือนที่เครื่อง")
-            case .missingQueue: return (.red, "ไม่พบคิวพิมพ์ \(Engine.queue) ในระบบ")
+            case .checking: return (.gray, "Checking printer…")
+            case .ready: return (.green, "Printer ready")
+            case .printing: return (.orange, "Printer busy")
+            case .offline: return (.red, "Printer not found — turn it on and check the USB cable")
+            case .stopped: return (.red, "Print queue stopped — check paper and warning lights")
+            case .missingQueue: return (.red, "Print queue \(Engine.queue) not found")
             }
         }()
         HStack(spacing: 6) {
@@ -549,8 +549,8 @@ struct ContentView: View {
             if model.files.isEmpty {
                 VStack(spacing: 6) {
                     Image(systemName: "doc.badge.plus").font(.largeTitle).foregroundStyle(.secondary)
-                    Text("ลากไฟล์ PDF หรือรูปภาพมาวางที่นี่")
-                    Text("หรือกด “เพิ่มไฟล์…”").foregroundStyle(.secondary)
+                    Text("Drop PDF files or images here")
+                    Text("or click “Add Files…”").foregroundStyle(.secondary)
                 }
             } else {
                 List {
@@ -596,16 +596,16 @@ struct ContentView: View {
     }
 
     private var idleText: String {
-        if model.files.isEmpty { return "ยังไม่ได้เลือกไฟล์" }
-        if !model.printer.canAcceptJobs { return "รอเครื่องพิมพ์พร้อมก่อนจึงจะพิมพ์ได้" }
-        if model.selectedFiles.isEmpty { return "ติ๊กไฟล์ที่ต้องการพิมพ์ หรือกดปุ่มเครื่องพิมพ์ที่ไฟล์" }
-        return "พร้อมพิมพ์"
+        if model.files.isEmpty { return "No files yet" }
+        if !model.printer.canAcceptJobs { return "Waiting for the printer to be ready" }
+        if model.selectedFiles.isEmpty { return "Tick files to print, or use the printer button on a file" }
+        return "Ready to print"
     }
 
     private func chooseFiles() {
         let panel = NSOpenPanel()
-        panel.title = "เลือกไฟล์ที่จะพิมพ์"
-        panel.message = "PDF, รูปภาพ หรือไฟล์ข้อความ (เลือกได้หลายไฟล์)"
+        panel.title = "Choose files to print"
+        panel.message = "PDF, images or text files (you can pick several)"
         panel.allowsMultipleSelection = true
         panel.canChooseDirectories = false
         panel.allowedContentTypes = [.pdf, .image, .plainText]
