@@ -4,9 +4,7 @@
 
 <h1 align="center">Print G2010</h1>
 
-<p align="center"><b>สั่งพิมพ์ Canon PIXMA G2010 บน Mac ชิป Apple</b></p>
-
-<p align="center"><i>เพิ่มไฟล์ เลือกหน้า แล้วพิมพ์ กองกระดาษเรียงถูกต้อง</i></p>
+<p align="center"><b>แอปสั่งพิมพ์ Canon PIXMA G2010 สำหรับ Mac ที่ใช้ชิป Apple Silicon</b></p>
 
 <p align="center">
   <img src="https://img.shields.io/badge/App-v1.0.0-8250df" alt="App: v1.0.0">
