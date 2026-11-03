@@ -677,11 +677,16 @@ struct ContentView: View {
                 List {
                     ForEach(model.files, id: \.self) { url in
                         FileRow(model: model, url: url)
+                            .listRowInsets(EdgeInsets(top: 2, leading: 0, bottom: 2, trailing: 0))
+                            .listRowSeparator(.hidden)
                     }
                     .onMove { model.move(from: $0, to: $1) }
                 }
                 .scrollContentBackground(.hidden)
-                .padding(2)
+                .listStyle(.plain)
+                // The hover highlight sits the same distance from the top, left and right edges.
+                .padding(.vertical, 6)
+                .padding(.trailing, -1)
             }
         }
         .frame(maxWidth: .infinity, minHeight: 140, maxHeight: .infinity)
