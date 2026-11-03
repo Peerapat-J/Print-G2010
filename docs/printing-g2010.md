@@ -50,7 +50,7 @@ scripts/g2010-print --pages 1,3,5-9 file.pdf  # เฉพาะบางหน�
 แบบกดเลือกไฟล์ (ไม่ต้องพิมพ์คำสั่ง):
 
 ```sh
-scripts/build-app.sh             # สร้าง build/Print G2010.app (ต้องมี Xcode command line tools)
+scripts/build-app.sh             # สร้าง build/Print G2010.app (ต้องมี Xcode และ `brew install xcodegen`)
 ```
 
 เปิด `build/Print G2010.app` จะได้หน้าต่างเดียว: กด "Add Files…" หรือลาก PDF/รูปมาวาง ไฟล์ที่เพิ่มจะถูกติ๊กไว้ทุกไฟล์
@@ -62,9 +62,9 @@ scripts/build-app.sh             # สร้าง build/Print G2010.app (ต้
 - หน้าต่างไม่ปิดเอง
 - ข้อความในแอปทั้งหมดเป็นภาษาอังกฤษ
 
-แอปเรียก `scripts/g2010-print` ข้างใน และจำ path ของ repo ตอนสร้าง ถ้าย้าย repo ต้องรัน `scripts/build-app.sh` ใหม่ ครั้งแรกที่เปิดไฟล์ใน Downloads หรือ Documents macOS อาจถามขอสิทธิ์เข้าถึงโฟลเดอร์ ให้กดอนุญาต
+แอปเรียก `scripts/g2010-print` ข้างใน และเก็บสคริปต์ เครื่องมือแยกหน้า Gutenprint และ PPD ไว้ใน `Contents/Resources/g2010` ของตัวแอปเอง จึงย้ายแอปไปที่อื่นหรือเครื่องอื่นได้โดยไม่ต้องมี repo แอปหาคิวพิมพ์ของ G2010 เองจากชื่ออุปกรณ์ (`lpstat -v`) ไม่ต้องตั้งชื่อคิวเฉพาะ ครั้งแรกที่เปิดไฟล์ใน Downloads หรือ Documents macOS อาจถามขอสิทธิ์เข้าถึงโฟลเดอร์ ให้กดอนุญาต
 
-ทดสอบแอปโดยไม่ใช้กระดาษ: `G2010_DRY_RUN=1 "build/Print G2010.app/Contents/MacOS/PrintG2010" --selftest file.pdf`
+ทดสอบแอปโดยไม่ใช้กระดาษ: `G2010_DRY_RUN=1 "build/Print G2010.app/Contents/MacOS/Print G2010" --selftest file.pdf`
 
 เอกสาร Word/Pages: ส่งออกเป็น PDF ก่อน (File > Export As > PDF) แล้วพิมพ์ PDF นั้น สคริปต์ไม่เปิด Word เอง เพราะ Word ที่ sandbox จะขึ้นหน้าต่าง "Grant File Access" ถ้าต้องเขียนไฟล์นอกโฟลเดอร์ของมัน
 
@@ -76,3 +76,13 @@ scripts/build-app.sh             # สร้าง build/Print G2010.app (ต้
 - ตรวจคุณภาพ ขอบกระดาษ สี และหลายหน้า/สองหน้า
 - สแกน ยังทำผ่าน SANE ได้ตามเอกสารวิจัยเดิม ยังไม่รวมเป็นแอป
 - ลบ Gutenprint 5.3.3 (Intel) ที่ติดตั้งไว้ที่ `/Library/Printers/Gutenprint.printerDriver` ใช้ `uninstall-gutenprint.command` จาก dmg
+
+## โปรเจกต์ Xcode และการแจกให้คนอื่น
+
+- `project.yml` คือไฟล์ต้นทางของโปรเจกต์ Xcode (ใช้ XcodeGen) ส่วน `PrintG2010.xcodeproj` กับ `app/Info.plist` สร้างจากมันแล้ว commit ไว้เพื่อเปิดใน Xcode ได้เลย แก้ `project.yml` แล้วรัน `xcodegen` เพื่อสร้างใหม่ (`scripts/build-app.sh` ทำให้เองถ้ามี xcodegen)
+- มี 2 target: `pdf-tool` (เครื่องมือแยกหน้า PDF จาก `tools/pdf-tool`) และ `PrintG2010` (ตัวแอป จาก `app/`) phase "Bundle helpers" (`scripts/xcode-bundle-helpers.sh`) คัดลอกของที่แอปต้องใช้เข้าไปใน `.app` ต้องรัน `scripts/build-gutenprint.sh` ก่อนอย่างน้อยหนึ่งครั้ง
+- แอปเซ็นแบบ ad-hoc ไม่ใช้ sandbox (ต้องเรียกโปรเซสอื่น) และรองรับเฉพาะ Mac ชิป Apple (arm64) macOS 14 ขึ้นไป เพราะ Gutenprint ที่แนบไปคอมไพล์เป็น arm64 อย่างเดียว
+- ไอคอนสร้างด้วย `swift scripts/make-icon.swift` (ผลอยู่ใน `app/Assets.xcassets`)
+- `scripts/make-dmg.sh` สร้าง `dist/PrintG2010-<เวอร์ชัน>.dmg` (แอป + ทางลัด Applications + Read Me สองภาษา) เพื่อส่งให้เพื่อนร่วมงาน
+- **การเปิดครั้งแรกบนเครื่องอื่น:** เพราะไม่ได้เซ็นด้วยบัญชี Apple Developer ที่เสียเงิน macOS จะขึ้น "Apple could not verify…" ต้องกด Done แล้วไปที่ System Settings > Privacy & Security > Open Anyway หรือรัน `xattr -dr com.apple.quarantine "/Applications/Print G2010.app"` ครั้งเดียว (อธิบายไว้ใน Read Me ในไฟล์ DMG) ถ้าอยากให้หน้าต่างนี้หายไปต้องสมัคร Apple Developer Program (เสียเงินรายปี) แล้วเซ็นและ notarize
+- ที่ยังไม่ได้ทดสอบ: ติดตั้งจาก DMG บนเครื่องอื่นจริง และการเพิ่มคิวพิมพ์บนเครื่องที่ไม่เคยลง driver ของ Canon
