@@ -37,6 +37,7 @@ targets:
     dependencies:
       - target: pdf-tool
         link: false
+        embed: false
     settings:
       base:
         PRODUCT_NAME: Print G2010

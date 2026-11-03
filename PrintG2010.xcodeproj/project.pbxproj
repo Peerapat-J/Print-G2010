@@ -10,7 +10,6 @@
 		2CFD6CB24CC1CE244160254C /* main.swift in Sources */ = {isa = PBXBuildFile; fileRef = F3174D7975CD5E48429CF872 /* main.swift */; };
 		6EEBE4AF5754AEA36794E05B /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = DDC6FB349DC8C385EE6FCF34 /* Assets.xcassets */; };
 		8DC4E86DA9A046065DE0C02D /* PrintG2010.swift in Sources */ = {isa = PBXBuildFile; fileRef = 37021612912B40861A4AED67 /* PrintG2010.swift */; };
-		F978D472C4C4770D0833888D /* pdf-tool in Resources */ = {isa = PBXBuildFile; fileRef = 8AC528ED5E669119FE0CE92B /* pdf-tool */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -158,7 +157,6 @@
 			buildActionMask = 2147483647;
 			files = (
 				6EEBE4AF5754AEA36794E05B /* Assets.xcassets in Resources */,
-				F978D472C4C4770D0833888D /* pdf-tool in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
