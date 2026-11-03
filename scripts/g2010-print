@@ -4,6 +4,7 @@
 #   -> Gutenprint -> USB (one raw job per page)
 # The G2010 delivers pages face up, so pages are sent last-to-first by default
 # and the stack comes out in reading order (--no-reverse to disable).
+# --pages picks pages: "odd", "even", or a list such as "1,3,5-9" (default: all).
 #   Office documents must be exported to PDF first (see the error message).
 # The job is sent raw, so the queue's own (Canon) filters are bypassed.
 set -euo pipefail
@@ -17,15 +18,17 @@ PAPER="A4"
 COPIES=1
 DRY=0
 REVERSE=1
+PAGES=""
 TOOL="$ROOT/build/bin/pdf-tool"
 
-usage() { echo "usage: $0 [-q queue] [-p PageSize] [-n copies] [--no-reverse] [--dry-run] file" >&2; exit 2; }
+usage() { echo "usage: $0 [-q queue] [-p PageSize] [-n copies] [--pages SPEC] [--no-reverse] [--dry-run] file" >&2; exit 2; }
 while [ $# -gt 0 ]; do
   case "$1" in
     -q) QUEUE="$2"; shift 2;;
     -p) PAPER="$2"; shift 2;;
     -n) COPIES="$2"; shift 2;;
     --dry-run) DRY=1; shift;;
+    --pages) PAGES="$2"; shift 2;;
     --no-reverse) REVERSE=0; shift;;
     -h|--help) usage;;
     --) shift; break;;
@@ -71,8 +74,31 @@ case "$(echo "${FILE##*.}" | tr A-Z a-z)" in
     PDF="$TMP/in.pdf";;
 esac
 N="$("$TOOL" split "$PDF" "$TMP/pages")" || exit 1
-if [ "$REVERSE" = 1 ]; then ORDER="$(seq "$N" -1 1)"; else ORDER="$(seq "$N")"; fi
-TOTAL=$((N * COPIES))
+
+# Prints the chosen page numbers, ascending and without duplicates.
+select_pages() {
+  local spec="${PAGES//[[:space:]]/}" part a b parts
+  [ -n "$spec" ] || { seq "$N"; return; }
+  IFS=',' read -ra parts <<<"$spec"
+  for part in "${parts[@]}"; do
+    case "$part" in
+      odd) seq 1 2 "$N";;
+      even) [ "$N" -lt 2 ] || seq 2 2 "$N";;
+      *)
+        if [[ "$part" =~ ^[0-9]+$ ]]; then a="$part"; b="$part"
+        elif [[ "$part" =~ ^([0-9]+)-([0-9]+)$ ]]; then a="${BASH_REMATCH[1]}"; b="${BASH_REMATCH[2]}"
+        else echo "invalid page selection: '$part' (use e.g. 1,3,5-9, odd or even)" >&2; return 1; fi
+        if [ "$a" -lt 1 ] || [ "$a" -gt "$b" ]; then echo "invalid page range: '$part'" >&2; return 1; fi
+        if [ "$b" -gt "$N" ]; then echo "page $b is out of range (the document has $N pages)" >&2; return 1; fi
+        seq "$a" "$b";;
+    esac
+  done
+}
+PAGELIST="$(select_pages | sort -nu)" || exit 1
+[ -n "$PAGELIST" ] || { echo "no pages selected (the document has $N pages)" >&2; exit 1; }
+if [ "$REVERSE" = 1 ]; then ORDER="$(echo "$PAGELIST" | sort -rn)"; else ORDER="$PAGELIST"; fi
+NSEL="$(echo "$PAGELIST" | wc -l | tr -d ' ')"
+TOTAL=$((NSEL * COPIES))
 echo "@@total $TOTAL" >&2
 
 convert_page() {
@@ -97,5 +123,5 @@ for _ in $(seq "$COPIES"); do
     echo "@@page $SENT/$TOTAL" >&2
   done
 done
-[ "$DRY" = 1 ] && echo "dry run ok: $N page(s) converted, not sent" >&2
+[ "$DRY" = 1 ] && echo "dry run ok: $NSEL page(s) converted, not sent" >&2
 exit 0
