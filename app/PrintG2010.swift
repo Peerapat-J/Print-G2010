@@ -55,7 +55,9 @@ enum Engine {
     static let root = (Bundle.main.object(forInfoDictionaryKey: "G2010Root") as? String) ?? ""
     static let env = ProcessInfo.processInfo.environment
     static let dryRun = env["G2010_DRY_RUN"] == "1"
-    static let queue = env["G2010_QUEUE"] ?? "Canon_G2010_series"
+    /// The CUPS queue used for printing. Found with `lpstat -v` (see `refreshQueue`);
+    /// G2010_QUEUE overrides it.
+    static var queue = env["G2010_QUEUE"] ?? "Canon_G2010_series"
     static let script = root + "/scripts/g2010-print"
     static let officeExts: Set<String> = ["docx", "doc", "pages", "xlsx", "pptx", "key", "numbers"]
 
@@ -109,8 +111,28 @@ enum PrinterStatus: Equatable {
 }
 
 extension Engine {
+    /// The queue whose device is the G2010's USB port, whatever the user called it:
+    /// "device for Canon_G2010_series: usb://Canon/G2010%20series?serial=..."
+    static func findQueue() async -> String? {
+        let r = await run("/usr/bin/lpstat", ["-v"])
+        for line in r.stdout.split(separator: "\n") where line.hasPrefix("device for ") && line.contains("G2010") {
+            let rest = line.dropFirst("device for ".count)
+            if let colon = rest.firstIndex(of: ":") { return String(rest[..<colon]) }
+        }
+        return nil
+    }
+
+    /// Updates `queue`; false when there is no queue for the G2010 (printer not added yet).
+    static func refreshQueue() async -> Bool {
+        if env["G2010_QUEUE"] != nil { return true }
+        guard let found = await findQueue() else { return false }
+        queue = found
+        return true
+    }
+
     /// Combines "is the G2010 on the USB bus" (printer on and cable fine) with the CUPS queue state.
     static func printerStatus() async -> PrinterStatus {
+        guard await refreshQueue() else { return .missingQueue }
         let q = await run("/usr/bin/lpstat", ["-p", queue])
         if q.status != 0 { return .missingQueue }
         let usb = await run("/usr/sbin/ioreg", ["-p", "IOUSB", "-w0"])
@@ -338,7 +360,8 @@ final class PrintModel: ObservableObject {
     private func runOne(_ job: PrintJob) async -> Bool {
         let file = job.url
         let name = file.lastPathComponent
-        var args = ["-n", String(job.copies)]
+        _ = await Engine.refreshQueue()
+        var args = ["-q", Engine.queue, "-n", String(job.copies)]
         if !job.reverse { args.append("--no-reverse") }
         if !job.pages.isEmpty { args += ["--pages", job.pages] }
         if Engine.dryRun { args.append("--dry-run") }
@@ -651,7 +674,7 @@ struct ContentView: View {
             case .printing: return (.orange, "Printer busy")
             case .offline: return (.red, "Printer not found — turn it on and check the USB cable")
             case .stopped: return (.red, "Print queue stopped — check paper and warning lights")
-            case .missingQueue: return (.red, "Print queue \(Engine.queue) not found")
+            case .missingQueue: return (.red, "No print queue for the G2010 — add the printer in System Settings")
             }
         }()
         HStack(spacing: 6) {
