@@ -1,0 +1,64 @@
+PRINT G2010
+===========
+
+A small app for printing on the Canon PIXMA G2010 from a Mac, because Canon
+provides no driver for it on recent versions of macOS.
+
+What you need
+  - A Mac with Apple silicon (M1 or newer) running macOS 14 or later
+  - The G2010 connected by USB cable and switched on
+  - The printer added once in System Settings > Printers & Scanners
+    (click +, choose the Canon G2010, any driver is fine - the app does its
+    own conversion)
+
+Install
+  1. Drag "Print G2010" onto the Applications folder.
+  2. Open it from Applications.
+
+First time only: macOS will say it "could not verify" the app
+  The app is not signed with a paid Apple developer account, so macOS blocks
+  it the first time. This is expected.
+  1. In the message that appears, click Done (not "Move to Trash").
+  2. Open System Settings > Privacy & Security and scroll down to the
+     message about "Print G2010". Click "Open Anyway" and enter your password.
+  3. Open the app again and click Open.
+  Or, in Terminal (one line):
+     xattr -dr com.apple.quarantine "/Applications/Print G2010.app"
+
+Use
+  - Click "Add Files..." or drop PDF files and pictures on the window.
+  - Tick the files to print and click "Print Selected", or click the printer
+    button on a file to choose copies and pages for that file.
+  - Drag a row up or down to change the print order.
+  - Word / Pages documents: export them to PDF first (File > Export As > PDF).
+
+If something is wrong
+  - "No print queue for the G2010": add the printer in System Settings (see above).
+  - "Printer not found": switch the printer on and check the USB cable.
+
+(c) 2026 Peerapat Jardrit
+
+------------------------------------------------------------------------------
+ภาษาไทย
+
+PRINT G2010 เป็นแอปสั่งพิมพ์ Canon PIXMA G2010 จาก Mac เพราะ Canon ไม่มีไดรเวอร์
+สำหรับ macOS รุ่นใหม่
+
+สิ่งที่ต้องมี: Mac ชิป Apple (M1 ขึ้นไป) macOS 14 ขึ้นไป, เครื่อง G2010 ต่อสาย USB
+และเปิดเครื่อง, และเพิ่มเครื่องพิมพ์ครั้งเดียวใน System Settings > Printers & Scanners
+(กด + เลือก Canon G2010 ไดรเวอร์อะไรก็ได้)
+
+ติดตั้ง: ลาก "Print G2010" ไปวางที่โฟลเดอร์ Applications แล้วเปิดจาก Applications
+
+เปิดครั้งแรก macOS จะแจ้งว่าตรวจสอบแอปไม่ได้ (เพราะแอปไม่ได้เซ็นด้วยบัญชีนักพัฒนาของ Apple
+แบบเสียเงิน) ให้ทำดังนี้ครั้งเดียว:
+  1. กด Done (ห้ามกด Move to Trash)
+  2. เปิด System Settings > Privacy & Security เลื่อนลงไปที่ข้อความเกี่ยวกับ "Print G2010"
+     กด "Open Anyway" แล้วใส่รหัสผ่านเครื่อง
+  3. เปิดแอปอีกครั้งแล้วกด Open
+  หรือใช้คำสั่งใน Terminal บรรทัดเดียว:
+     xattr -dr com.apple.quarantine "/Applications/Print G2010.app"
+
+วิธีใช้: กด "Add Files..." หรือลากไฟล์ PDF/รูปมาวาง ติ๊กไฟล์ที่ต้องการแล้วกด "Print Selected"
+หรือกดปุ่มเครื่องพิมพ์ที่ไฟล์เพื่อเลือกจำนวนชุดและหน้า ลากแถวเพื่อเปลี่ยนลำดับ
+ไฟล์ Word/Pages ให้ส่งออกเป็น PDF ก่อน

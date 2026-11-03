@@ -8,3 +8,6 @@
 # Xcode per-user state.
 xcuserdata/
 *.xcuserstate
+
+# Installers built by scripts/make-dmg.sh.
+/dist/
