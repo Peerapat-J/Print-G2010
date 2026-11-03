@@ -185,11 +185,6 @@ final class PrintModel: ObservableObject {
         }
     }
 
-    func replace(with urls: [URL]) {
-        files = []
-        add(urls)
-    }
-
     func add(_ urls: [URL]) {
         guard !busy else { return }
         var rejected: [String] = []
@@ -312,7 +307,7 @@ struct ContentView: View {
             fileArea
 
             HStack {
-                Button("เลือกไฟล์…") { chooseFiles() }
+                Button("เพิ่มไฟล์…") { chooseFiles() }
                     .disabled(model.busy)
                 if !model.files.isEmpty {
                     Button("ล้างรายการ") { model.clear() }
@@ -389,7 +384,7 @@ struct ContentView: View {
                 VStack(spacing: 6) {
                     Image(systemName: "doc.badge.plus").font(.largeTitle).foregroundStyle(.secondary)
                     Text("ลากไฟล์ PDF หรือรูปภาพมาวางที่นี่")
-                    Text("หรือกด “เลือกไฟล์…”").foregroundStyle(.secondary)
+                    Text("หรือกด “เพิ่มไฟล์…”").foregroundStyle(.secondary)
                 }
             } else {
                 List {
@@ -461,7 +456,7 @@ struct ContentView: View {
         panel.allowsMultipleSelection = true
         panel.canChooseDirectories = false
         panel.allowedContentTypes = [.pdf, .image, .plainText]
-        if panel.runModal() == .OK { model.replace(with: panel.urls) }
+        if panel.runModal() == .OK { model.add(panel.urls) }
     }
 }
 
