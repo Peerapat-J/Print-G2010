@@ -416,6 +416,32 @@ struct CopiesField: View {
     }
 }
 
+/// Shows an open hand while the pointer is over the view, to say "you can drag this".
+struct HandCursor: ViewModifier {
+    var enabled: Bool
+    @State private var inside = false
+
+    func body(content: Content) -> some View {
+        content
+            .onHover { hovering in
+                if hovering && enabled && !inside {
+                    NSCursor.openHand.push()
+                    inside = true
+                } else if !hovering && inside {
+                    NSCursor.pop()
+                    inside = false
+                }
+            }
+            .onDisappear {
+                if inside { NSCursor.pop(); inside = false }
+            }
+    }
+}
+
+extension View {
+    func handCursor(_ enabled: Bool = true) -> some View { modifier(HandCursor(enabled: enabled)) }
+}
+
 struct FileRow: View {
     @ObservedObject var model: PrintModel
     let url: URL
@@ -428,26 +454,26 @@ struct FileRow: View {
     var body: some View {
         let status = model.status(url)
         HStack(spacing: 10) {
-            if model.files.count > 1 {
-                Image(systemName: "line.3.horizontal")
-                    .foregroundStyle(.tertiary)
-                    .help("Drag to change the print order")
-            }
             Toggle("", isOn: Binding(get: { model.selected.contains(url) },
                                      set: { model.setSelected(url, $0) }))
                 .toggleStyle(.checkbox)
                 .labelsHidden()
                 .disabled(status.isActive)
                 .help("Tick the files to print with “Print Selected”")
-            Image(nsImage: NSWorkspace.shared.icon(forFile: url.path))
-                .resizable().frame(width: 24, height: 24)
-            VStack(alignment: .leading, spacing: 1) {
-                Text(url.lastPathComponent).lineLimit(1).truncationMode(.middle)
-                Text(url.deletingLastPathComponent().path)
-                    .font(.caption).foregroundStyle(.secondary)
-                    .lineLimit(1).truncationMode(.head)
+            // The part of the row that can be grabbed to reorder; it shows an open hand.
+            HStack(spacing: 10) {
+                Image(nsImage: NSWorkspace.shared.icon(forFile: url.path))
+                    .resizable().frame(width: 24, height: 24)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(url.lastPathComponent).lineLimit(1).truncationMode(.middle)
+                    Text(url.deletingLastPathComponent().path)
+                        .font(.caption).foregroundStyle(.secondary)
+                        .lineLimit(1).truncationMode(.head)
+                }
+                Spacer(minLength: 4)
             }
-            Spacer(minLength: 4)
+            .contentShape(Rectangle())
+            .handCursor(model.files.count > 1)
             badge(status)
             Button { openPopover() } label: {
                 Image(systemName: "printer.fill").foregroundStyle(Color.accentColor)
