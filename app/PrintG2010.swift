@@ -145,6 +145,10 @@ final class PrintModel: ObservableObject {
     @Published var copiesText = "1"
     @Published var state: PrintState = .idle
     @Published var printer: PrinterStatus = .checking
+    /// The G2010 puts pages out face up, so sending the last page first leaves the stack in order.
+    @Published var reverseOrder: Bool = UserDefaults.standard.object(forKey: "reverseOrder") as? Bool ?? true {
+        didSet { UserDefaults.standard.set(reverseOrder, forKey: "reverseOrder") }
+    }
 
     /// nil unless the field holds a whole number from 1 to 99.
     var copies: Int? {
@@ -218,6 +222,7 @@ final class PrintModel: ObservableObject {
             let name = file.lastPathComponent
             set(.working("\(prefix)กำลังแปลงไฟล์ \(name)"))
             var args = ["-n", String(copies)]
+            if !reverseOrder { args.append("--no-reverse") }
             if Engine.dryRun { args.append("--dry-run") }
             args.append(file.path)
             let r = await Engine.run(Engine.script, args) { line in
@@ -309,6 +314,10 @@ struct ContentView: View {
                     .font(.caption).foregroundStyle(.red)
                     .frame(maxWidth: .infinity, alignment: .trailing)
             }
+
+            Toggle("พิมพ์จากหน้าสุดท้ายก่อน (กองกระดาษที่ออกมาเรียงหน้า 1 อยู่บนสุด)", isOn: $model.reverseOrder)
+                .toggleStyle(.checkbox)
+                .disabled(model.busy)
 
             Button {
                 model.print()

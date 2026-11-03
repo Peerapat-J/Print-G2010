@@ -1,6 +1,9 @@
 #!/bin/bash
 # Print a file on the Canon G2010 without the Canon driver.
-#   PDF/images/text -> CUPS raster (Apple filters) -> Gutenprint -> USB (raw job)
+#   PDF/images/text -> one PDF per page -> CUPS raster (Apple filters)
+#   -> Gutenprint -> USB (one raw job per page)
+# The G2010 delivers pages face up, so pages are sent last-to-first by default
+# and the stack comes out in reading order (--no-reverse to disable).
 #   Office documents must be exported to PDF first (see the error message).
 # The job is sent raw, so the queue's own (Canon) filters are bypassed.
 set -euo pipefail
@@ -13,14 +16,17 @@ QUEUE="${G2010_QUEUE:-Canon_G2010_series}"
 PAPER="A4"
 COPIES=1
 DRY=0
+REVERSE=1
+TOOL="$ROOT/build/bin/pdf-tool"
 
-usage() { echo "usage: $0 [-q queue] [-p PageSize] [-n copies] [--dry-run] file" >&2; exit 2; }
+usage() { echo "usage: $0 [-q queue] [-p PageSize] [-n copies] [--no-reverse] [--dry-run] file" >&2; exit 2; }
 while [ $# -gt 0 ]; do
   case "$1" in
     -q) QUEUE="$2"; shift 2;;
     -p) PAPER="$2"; shift 2;;
     -n) COPIES="$2"; shift 2;;
     --dry-run) DRY=1; shift;;
+    --no-reverse) REVERSE=0; shift;;
     -h|--help) usage;;
     --) shift; break;;
     -*) usage;;
@@ -34,7 +40,6 @@ FILE="$1"
 lpstat -p "$QUEUE" >/dev/null 2>&1 || { echo "CUPS queue not found: $QUEUE" >&2; exit 1; }
 
 TMP="$(mktemp -d)"; trap 'rm -rf "$TMP"' EXIT
-SRC="$FILE"
 case "$(echo "${FILE##*.}" | tr A-Z a-z)" in
   docx|doc|pages|xlsx|pptx|key|numbers)
     # Word/Pages are sandboxed and cannot be driven reliably from a script
@@ -51,24 +56,45 @@ export DYLD_LIBRARY_PATH="$STAGE/usr/local/lib"
 export PPD
 
 # Progress lines starting with "@@" on stderr are meant for front ends:
-#   @@convert   converting the file     @@send A/N   sending copy A of N
-convert() {
-  echo "@@convert" >&2
-  if ! cupsfilter -p "$PPD" -m application/vnd.cups-raster -o "PageSize=$PAPER" "$SRC" 2>"$TMP/cf.err" \
-      | "$FILTER" 1 "$USER" g2010-print 1 "PageSize=$PAPER" 2>"$TMP/gp.err" >"$TMP/job.bjl" \
-      || [ ! -s "$TMP/job.bjl" ]; then
-    echo "conversion failed: $(tail -n 2 "$TMP/cf.err" "$TMP/gp.err" 2>/dev/null | grep -v '^==>' | tr '\n' ' ')" >&2
+#   @@total N   pages to send (pages x copies)     @@convert K   converting page K
+#   @@page A/N  A of N pages sent
+if [ ! -x "$TOOL" ] || [ "$ROOT/app/pdf-tool.swift" -nt "$TOOL" ]; then
+  mkdir -p "$(dirname "$TOOL")"
+  swiftc -O -o "$TOOL" "$ROOT/app/pdf-tool.swift" || { echo "cannot build pdf-tool (needs Xcode command line tools)" >&2; exit 1; }
+fi
+
+case "$(echo "${FILE##*.}" | tr A-Z a-z)" in
+  pdf) PDF="$FILE";;
+  *)
+    echo "@@prepare" >&2
+    cupsfilter -m application/pdf "$FILE" >"$TMP/in.pdf" 2>"$TMP/pdf.err" || { echo "cannot convert to PDF: $(tail -n 2 "$TMP/pdf.err")" >&2; exit 1; }
+    PDF="$TMP/in.pdf";;
+esac
+N="$("$TOOL" split "$PDF" "$TMP/pages")" || exit 1
+if [ "$REVERSE" = 1 ]; then ORDER="$(seq "$N" -1 1)"; else ORDER="$(seq "$N")"; fi
+TOTAL=$((N * COPIES))
+echo "@@total $TOTAL" >&2
+
+convert_page() {
+  echo "@@convert $1" >&2
+  if ! cupsfilter -p "$PPD" -m application/vnd.cups-raster -o "PageSize=$PAPER" "$TMP/pages/p$1.pdf" 2>"$TMP/cf.err" \
+      | "$FILTER" 1 "$USER" g2010-print 1 "PageSize=$PAPER" 2>"$TMP/gp.err" >"$TMP/p$1.bjl" \
+      || [ ! -s "$TMP/p$1.bjl" ]; then
+    echo "conversion of page $1 failed: $(tail -n 2 "$TMP/cf.err" "$TMP/gp.err" 2>/dev/null | grep -v '^==>' | tr '\n' ' ')" >&2
     exit 1
   fi
 }
 
-convert
-if [ "$DRY" = 1 ]; then
-  echo "dry run ok: $(wc -c <"$TMP/job.bjl" | tr -d ' ') bytes of printer data, not sent" >&2
-  exit 0
-fi
-
-for i in $(seq "$COPIES"); do
-  echo "@@send $i/$COPIES" >&2
-  lp -d "$QUEUE" -o raw -t "$(basename "$FILE")" "$TMP/job.bjl"
+SENT=0
+for _ in $(seq "$COPIES"); do
+  for k in $ORDER; do
+    [ -s "$TMP/p$k.bjl" ] || convert_page "$k"
+    [ "$DRY" = 1 ] && continue
+    out="$(lp -d "$QUEUE" -o raw -t "$(basename "$FILE") p.$k" "$TMP/p$k.bjl")"
+    echo "$out"
+    SENT=$((SENT + 1))
+    echo "@@page $SENT/$TOTAL" >&2
+  done
 done
+[ "$DRY" = 1 ] && echo "dry run ok: $N page(s) converted, not sent" >&2
+exit 0
