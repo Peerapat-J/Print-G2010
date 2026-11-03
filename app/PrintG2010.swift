@@ -263,6 +263,11 @@ final class PrintModel: ObservableObject {
         if on { selected.insert(url) } else { selected.remove(url) }
     }
 
+    /// Reordering the list changes the order "Print Selected" sends the files in.
+    func move(from source: IndexSet, to destination: Int) {
+        files.move(fromOffsets: source, toOffset: destination)
+    }
+
     /// A file being printed cannot be removed; a queued one is simply taken out of the queue.
     func remove(_ url: URL) {
         if case .working = status(url) { return }
@@ -423,6 +428,11 @@ struct FileRow: View {
     var body: some View {
         let status = model.status(url)
         HStack(spacing: 10) {
+            if model.files.count > 1 {
+                Image(systemName: "line.3.horizontal")
+                    .foregroundStyle(.tertiary)
+                    .help("Drag to change the print order")
+            }
             Toggle("", isOn: Binding(get: { model.selected.contains(url) },
                                      set: { model.setSelected(url, $0) }))
                 .toggleStyle(.checkbox)
@@ -636,6 +646,7 @@ struct ContentView: View {
                     ForEach(model.files, id: \.self) { url in
                         FileRow(model: model, url: url)
                     }
+                    .onMove { model.move(from: $0, to: $1) }
                 }
                 .scrollContentBackground(.hidden)
                 .padding(2)
