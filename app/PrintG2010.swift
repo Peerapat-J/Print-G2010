@@ -133,9 +133,23 @@ enum PrintState: Equatable {
 /// Per-file badge in the list.
 enum FileStatus: Equatable {
     case waiting
+    case queued
     case working(String)
     case done
     case failed
+
+    var isActive: Bool {
+        switch self {
+        case .queued, .working: return true
+        default: return false
+        }
+    }
+}
+
+struct PrintJob {
+    var url: URL
+    var copies: Int
+    var reverse: Bool
 }
 
 /// Progress of one run of scripts/g2010-print, fed by its "@@" lines.
@@ -145,17 +159,21 @@ final class FileRun {
     var jobs: [String] = []
     var total = 0
     var sent = 0
-    var preparing = true
 
     func handle(_ parts: [String]) {
         switch parts.first {
         case "total": total = Int(parts.dropFirst().first ?? "") ?? 0
         case "job": if let id = parts.dropFirst().first, !id.isEmpty { jobs.append(id) }
         case "page": sent = Int((parts.dropFirst().first ?? "").split(separator: "/").first ?? "") ?? sent
-        case "convert", "prepare": preparing = true
         default: break
         }
     }
+}
+
+/// A whole number from 1 to 99, otherwise nil.
+func parseCopies(_ text: String) -> Int? {
+    guard let n = Int(text), (1...99).contains(n) else { return nil }
+    return n
 }
 
 @MainActor
@@ -168,29 +186,21 @@ final class PrintModel: ObservableObject {
     @Published var copiesText = "1"
     @Published var state: PrintState = .idle
     @Published var printer: PrinterStatus = .checking
+    @Published private(set) var queue: [PrintJob] = []
+    @Published private(set) var running = false
     /// The G2010 puts pages out face up, so sending the last page first leaves the stack in order.
     @Published var reverseOrder: Bool = UserDefaults.standard.object(forKey: "reverseOrder") as? Bool ?? true {
         didSet { UserDefaults.standard.set(reverseOrder, forKey: "reverseOrder") }
     }
 
-    /// nil unless the field holds a whole number from 1 to 99.
-    var copies: Int? {
-        guard let n = Int(copiesText), (1...99).contains(n) else { return nil }
-        return n
-    }
-
-    var busy: Bool {
-        if case .working = state { return true }
-        return false
-    }
+    var copies: Int? { parseCopies(copiesText) }
+    var busy: Bool { running }
 
     func status(_ url: URL) -> FileStatus { fileStatus[url] ?? .waiting }
 
-    /// Ticked files, in list order.
-    var selectedFiles: [URL] { files.filter { selected.contains($0) } }
-
-    var canPrint: Bool {
-        !selectedFiles.isEmpty && !busy && copies != nil && printer.canAcceptJobs
+    /// Ticked files that are not already queued or printing, in list order.
+    var selectedFiles: [URL] {
+        files.filter { selected.contains($0) && !status($0).isActive }
     }
 
     func monitorPrinter() async {
@@ -201,7 +211,6 @@ final class PrintModel: ObservableObject {
     }
 
     func add(_ urls: [URL]) {
-        guard !busy else { return }
         var rejected: [String] = []
         for url in urls where url.isFileURL {
             if Engine.officeExts.contains(url.pathExtension.lowercased()) {
@@ -212,8 +221,8 @@ final class PrintModel: ObservableObject {
             }
         }
         if rejected.isEmpty {
-            if case .failed = state { state = .idle }
-        } else {
+            if case .failed = state, !running { state = .idle }
+        } else if !running {
             state = .failed("พิมพ์ไฟล์ Word/Pages/Office โดยตรงไม่ได้: " + rejected.joined(separator: ", ")
                             + "\nให้ Export เป็น PDF ก่อน (File > Export As > PDF)")
         }
@@ -223,15 +232,17 @@ final class PrintModel: ObservableObject {
         if on { selected.insert(url) } else { selected.remove(url) }
     }
 
+    /// A file being printed cannot be removed; a queued one is simply taken out of the queue.
     func remove(_ url: URL) {
-        guard !busy else { return }
+        if case .working = status(url) { return }
+        queue.removeAll { $0.url == url }
         files.removeAll { $0 == url }
         selected.remove(url)
         fileStatus[url] = nil
     }
 
     func clear() {
-        guard !busy else { return }
+        guard !running else { return }
         files = []
         selected = []
         fileStatus = [:]
@@ -240,40 +251,64 @@ final class PrintModel: ObservableObject {
 
     /// Big button: every ticked file, top to bottom, with the copies field.
     func printSelected() {
-        guard !busy, let copies = self.copies else { return }
-        let todo = selectedFiles
-        guard !todo.isEmpty else { return }
-        todo.forEach { fileStatus[$0] = .waiting }
-        state = .working("กำลังเริ่ม…")
-        let reverse = reverseOrder
-        Task { await self.runAll(todo, copies: copies, reverse: reverse) }
+        guard let copies = self.copies else { return }
+        enqueue(selectedFiles, copies: copies)
     }
 
-    private func runAll(_ todo: [URL], copies: Int, reverse: Bool) async {
+    /// Adds files to the print queue; files already queued or printing are skipped.
+    func enqueue(_ urls: [URL], copies: Int) {
+        let reverse = reverseOrder
+        let new = urls.filter { !status($0).isActive }
+        guard !new.isEmpty else { return }
+        for url in new {
+            fileStatus[url] = .queued
+            queue.append(PrintJob(url: url, copies: copies, reverse: reverse))
+        }
+        if !running {
+            running = true
+            state = .working("กำลังเริ่ม…")
+            Task { await self.drain() }
+        }
+    }
+
+    private func drain() async {
         let began = Date()
-        for (i, file) in todo.enumerated() {
-            let prefix = todo.count > 1 ? "ไฟล์ \(i + 1)/\(todo.count) · " : ""
-            if !(await runOne(file, copies: copies, reverse: reverse, prefix: prefix)) { return }
+        var finished = 0
+        while !queue.isEmpty {
+            let job = queue.removeFirst()
+            if await runOne(job) {
+                finished += 1
+            } else {
+                // Something is wrong with the printer or the file: do not keep feeding the queue.
+                let dropped = queue.count
+                for j in queue { fileStatus[j.url] = .waiting }
+                queue = []
+                if dropped > 0, case .failed(let msg) = state {
+                    state = .failed(msg + "\nยกเลิกคิวที่เหลืออีก \(dropped) ไฟล์")
+                }
+                running = false
+                return
+            }
         }
         let took = Int(Date().timeIntervalSince(began))
-        let summary = "\(todo.count) ไฟล์ × \(copies) ชุด"
         state = .done(Engine.dryRun
-                      ? "ทดสอบแปลงไฟล์เรียบร้อย (\(summary)) ยังไม่ได้ส่งไปเครื่องพิมพ์"
-                      : "พิมพ์เสร็จแล้ว (\(summary)) ใช้เวลา \(took) วินาที")
+                      ? "ทดสอบแปลงไฟล์เรียบร้อย (\(finished) ไฟล์) ยังไม่ได้ส่งไปเครื่องพิมพ์"
+                      : "พิมพ์เสร็จแล้ว (\(finished) ไฟล์) ใช้เวลา \(took) วินาที")
+        running = false
     }
 
-    /// Runs the script and, while it is converting and sending pages, follows the CUPS queue
-    /// to count how many pages the printer has taken. Returns false after showing an error.
-    private func runOne(_ file: URL, copies: Int, reverse: Bool, prefix: String) async -> Bool {
+    /// Runs the script and, while it converts and sends pages, follows the CUPS queue to count
+    /// how many pages the printer has taken. Returns false after showing an error.
+    private func runOne(_ job: PrintJob) async -> Bool {
+        let file = job.url
         let name = file.lastPathComponent
-        var args = ["-n", String(copies)]
-        if !reverse { args.append("--no-reverse") }
+        var args = ["-n", String(job.copies)]
+        if !job.reverse { args.append("--no-reverse") }
         if Engine.dryRun { args.append("--dry-run") }
         args.append(file.path)
 
         let run = FileRun()
         fileStatus[file] = .working("กำลังเตรียม")
-        state = .working("\(prefix)กำลังเตรียมไฟล์ \(name)")
         Task {
             let r = await Engine.run(Engine.script, args) { line in
                 guard line.hasPrefix("@@") else { return }
@@ -310,12 +345,13 @@ final class PrintModel: ObservableObject {
             }
 
             let elapsed = Int(Date().timeIntervalSince(start))
+            let waiting = queue.isEmpty ? "" : " · รอคิวอีก \(queue.count) ไฟล์"
             if run.jobs.isEmpty {
-                state = .working("\(prefix)กำลังเตรียมไฟล์ \(name) (\(elapsed) วินาที)")
+                state = .working("กำลังเตรียมไฟล์ \(name) (\(elapsed) วินาที)\(waiting)")
             } else {
                 fileStatus[file] = .working("พิมพ์แล้ว \(printed)/\(run.total) หน้า")
-                state = .working("\(prefix)\(name) — ส่งแล้ว \(run.sent)/\(run.total) หน้า · "
-                                 + "พิมพ์แล้ว \(printed)/\(run.total) หน้า (\(elapsed) วินาที)")
+                state = .working("\(name) — ส่งแล้ว \(run.sent)/\(run.total) หน้า · "
+                                 + "พิมพ์แล้ว \(printed)/\(run.total) หน้า (\(elapsed) วินาที)\(waiting)")
             }
             try? await Task.sleep(nanoseconds: 1_000_000_000)
         }
@@ -341,7 +377,6 @@ struct ContentView: View {
 
             HStack {
                 Button("เพิ่มไฟล์…") { chooseFiles() }
-                    .disabled(model.busy)
                 if !model.files.isEmpty {
                     Button("ล้างรายการ") { model.clear() }
                         .disabled(model.busy)
@@ -351,7 +386,6 @@ struct ContentView: View {
                 TextField("", text: $model.copiesText)
                     .multilineTextAlignment(.trailing)
                     .frame(width: 48)
-                    .disabled(model.busy)
                     .onChange(of: model.copiesText) { _, v in
                         // digits only, at most two of them
                         let clean = String(v.filter { $0.isASCII && $0.isNumber }.prefix(2))
@@ -361,7 +395,6 @@ struct ContentView: View {
                                            set: { model.copiesText = String($0) }),
                         in: 1...99)
                     .labelsHidden()
-                    .disabled(model.busy)
             }
             if model.copies == nil {
                 Text("กรอกจำนวนชุดเป็นตัวเลข 1–99")
@@ -382,7 +415,7 @@ struct ContentView: View {
             .keyboardShortcut(.defaultAction)
             .buttonStyle(.borderedProminent)
             .controlSize(.large)
-            .disabled(!model.canPrint)
+            .disabled(model.selectedFiles.isEmpty || model.copies == nil || !model.printer.canAcceptJobs)
 
             statusView
         }
@@ -411,6 +444,7 @@ struct ContentView: View {
     @ViewBuilder private func badge(_ status: FileStatus) -> some View {
         switch status {
         case .waiting: EmptyView()
+        case .queued: capsule("รอคิว", .blue)
         case .working(let text): capsule(text, .orange)
         case .done: capsule("✓ พิมพ์แล้ว", .green)
         case .failed: capsule("ไม่สำเร็จ", .red)
@@ -423,6 +457,7 @@ struct ContentView: View {
             .foregroundStyle(color)
             .padding(.horizontal, 8).padding(.vertical, 3)
             .background(color.opacity(0.18), in: Capsule())
+            .fixedSize()
     }
 
     @ViewBuilder private var fileArea: some View {
@@ -446,7 +481,7 @@ struct ContentView: View {
                                                      set: { model.setSelected(url, $0) }))
                                 .toggleStyle(.checkbox)
                                 .labelsHidden()
-                                .disabled(model.busy)
+                                .disabled(model.status(url).isActive)
                                 .help("ติ๊กไฟล์ที่ต้องการพิมพ์ด้วยปุ่ม “พิมพ์ที่เลือก”")
                             Image(nsImage: NSWorkspace.shared.icon(forFile: url.path))
                                 .resizable().frame(width: 24, height: 24)
@@ -456,13 +491,13 @@ struct ContentView: View {
                                     .font(.caption).foregroundStyle(.secondary)
                                     .lineLimit(1).truncationMode(.head)
                             }
-                            Spacer()
+                            Spacer(minLength: 4)
                             badge(model.status(url))
                             Button { model.remove(url) } label: {
                                 Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary)
                             }
                             .buttonStyle(.plain)
-                            .disabled(model.busy)
+                            .disabled({ if case .working = model.status(url) { return true } else { return false } }())
                             .help("เอาออกจากรายการ")
                         }
                     }
@@ -473,7 +508,6 @@ struct ContentView: View {
         }
         .frame(maxWidth: .infinity, minHeight: 140, maxHeight: .infinity)
         .onDrop(of: [UTType.fileURL], isTargeted: $targeted) { providers in
-            guard !model.busy else { return false }
             for p in providers {
                 _ = p.loadObject(ofClass: URL.self) { url, _ in
                     if let url { DispatchQueue.main.async { model.add([url]) } }
@@ -488,11 +522,7 @@ struct ContentView: View {
             switch model.state {
             case .idle:
                 Image(systemName: "circle.dashed").foregroundStyle(.secondary)
-                Text(model.files.isEmpty ? "ยังไม่ได้เลือกไฟล์"
-                     : !model.printer.canAcceptJobs ? "รอเครื่องพิมพ์พร้อมก่อนจึงจะพิมพ์ได้"
-                     : model.selectedFiles.isEmpty ? "ติ๊กไฟล์ที่ต้องการพิมพ์"
-                     : "พร้อมพิมพ์")
-                    .foregroundStyle(.secondary)
+                Text(idleText).foregroundStyle(.secondary)
             case .working(let msg):
                 ProgressView().controlSize(.small)
                 Text(msg)
@@ -507,6 +537,13 @@ struct ContentView: View {
         }
         .fixedSize(horizontal: false, vertical: true)
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var idleText: String {
+        if model.files.isEmpty { return "ยังไม่ได้เลือกไฟล์" }
+        if !model.printer.canAcceptJobs { return "รอเครื่องพิมพ์พร้อมก่อนจึงจะพิมพ์ได้" }
+        if model.selectedFiles.isEmpty { return "ติ๊กไฟล์ที่ต้องการพิมพ์" }
+        return "พร้อมพิมพ์"
     }
 
     private func chooseFiles() {
@@ -530,15 +567,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
         guard let i = args.firstIndex(of: "--selftest"), i + 1 < args.count else { return }
-        // Headless check: print the given file through the same code path and report the end state.
+        // Headless check: print the given files through the same code path and report the end state.
+        // The first file starts at once, the others are queued one second later (like clicking
+        // their own print buttons while the first is still printing).
         let model = PrintModel.shared
-        model.add([URL(fileURLWithPath: args[i + 1])])
-        model.printSelected()
+        let urls = args[(i + 1)...].map { URL(fileURLWithPath: $0) }
+        model.add(urls)
+        model.enqueue([urls[0]], copies: 1)
+        if urls.count > 1 {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
+                MainActor.assumeIsolated {
+                    model.enqueue(Array(urls.dropFirst()), copies: 1)
+                    Swift.print("queued:", urls.dropFirst().map { model.status($0) })
+                }
+            }
+        }
         Timer.scheduledTimer(withTimeInterval: 0.3, repeats: true) { t in
             MainActor.assumeIsolated {
-                if !model.busy {
+                if !model.busy && Date().timeIntervalSinceReferenceDate > 0 && (urls.count == 1 || model.files.allSatisfy { !model.status($0).isActive && model.status($0) != .waiting }) {
                     t.invalidate()
-                    Swift.print("selftest:", model.state)
+                    Swift.print("selftest:", model.state, urls.map { model.status($0) }, "selected:", model.selected.count)
                     exit(0)
                 }
             }
