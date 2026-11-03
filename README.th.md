@@ -1,6 +1,27 @@
-# Canon PIXMA Driver
+<p align="center">
+  <img src="docs/images/app-icon.png" width="128" alt="Print G2010 app icon">
+</p>
 
-[English](README.md) | **ภาษาไทย**
+<h1 align="center">Print G2010</h1>
+
+<p align="center"><b>สั่งพิมพ์ Canon PIXMA G2010 บน Mac ชิป Apple</b></p>
+
+<p align="center"><i>เพิ่มไฟล์ เลือกหน้า แล้วพิมพ์ กองกระดาษเรียงถูกต้อง</i></p>
+
+<p align="center">
+  <img src="https://img.shields.io/badge/App-v1.0.0-8250df" alt="App: v1.0.0">
+  <img src="https://img.shields.io/badge/macOS-14%2B-555555?logo=apple&logoColor=white" alt="macOS: 14+">
+  <img src="https://img.shields.io/badge/Hardware-Apple%20silicon-6e56cf?logo=apple&logoColor=white" alt="Hardware: Apple silicon">
+  <img src="https://img.shields.io/badge/Printer-Canon%20G2010-c1121f" alt="Printer: Canon G2010">
+  <img src="https://img.shields.io/badge/Price-Free%20to%20use-2da66b" alt="Price: Free to use">
+  <img src="https://img.shields.io/badge/Printing-Gutenprint-2f6fed" alt="Printing: Gutenprint">
+</p>
+
+<p align="center"><a href="#app">แอป</a> · <a href="#how">ทำงานอย่างไร</a> · <a href="#build">สร้างและรัน</a> · <a href="#share">แจกแอป</a> · <a href="#limits">ข้อจำกัด</a> · <a href="#license">สัญญาอนุญาต</a></p>
+
+<p align="center"><a href="README.md">English</a> &nbsp;|&nbsp; <b>ภาษาไทย</b></p>
+
+---
 
 สั่งพิมพ์ **Canon PIXMA G2010** จาก Mac Canon ไม่มีไดรเวอร์สำหรับเครื่องรุ่นนี้บน macOS รุ่นใหม่
 และไดรเวอร์ G2000 ของ Canon ค้างบน Mac ชิป Apple โปรเจกต์นี้พิมพ์ผ่าน
@@ -9,6 +30,8 @@
 
 สถานะ (3 พ.ย. 2026): **พิมพ์ได้แล้ว** บน MacBook Pro M1 Pro macOS 27.2 ต่อ G2010 ด้วยสาย USB
 ส่วนการสแกนเคยทดลองสำเร็จ (SANE, 300 DPI) แต่ยังไม่อยู่ในแอป
+
+<a id="app"></a>
 
 ## แอป
 
@@ -26,6 +49,8 @@ Print G2010 เป็นหน้าต่างเดียว:
 
 แอปมีทุกอย่างในตัว: สคริปต์พิมพ์ เครื่องมือแยกหน้า Gutenprint และไฟล์อธิบายเครื่องพิมพ์ จึงรันได้โดยไม่ต้องมี
 repository นี้ และหาคิวพิมพ์ของ G2010 เอง
+
+<a id="how"></a>
 
 ## ทำงานอย่างไร
 
@@ -48,6 +73,8 @@ System Settings → Printers & Scanners (ไดรเวอร์อะไรก
 
 สร้างแอป: Xcode, Homebrew, และ `pkgconf` กับ `xcodegen` จาก Homebrew ทดสอบเฉพาะ macOS 27.2 กับ Xcode 27.2
 
+<a id="build"></a>
+
 ## สร้างและรัน
 
 ```sh
@@ -67,6 +94,8 @@ scripts/g2010-print --dry-run file.pdf                # แปลงอย่า
 
 `G2010_DRY_RUN=1 "build/Print G2010.app/Contents/MacOS/Print G2010" --selftest file.pdf` รันโค้ดพิมพ์ของแอป
 โดยไม่ใช้เครื่องพิมพ์และกระดาษ
+
+<a id="share"></a>
 
 ## แจกแอปให้คนอื่น
 
@@ -89,6 +118,8 @@ scripts/g2010-print --dry-run file.pdf                # แปลงอย่า
 | `project.yml`, `PrintG2010.xcodeproj` | โปรเจกต์ Xcode (สร้างจาก `project.yml` ด้วย XcodeGen) |
 | `docs/` | บันทึกและงานวิจัย **ภาษาไทย** |
 
+<a id="limits"></a>
+
 ## ข้อจำกัดตอนนี้
 
 - ใช้ได้เฉพาะ Mac ชิป Apple และ macOS 14 ขึ้นไป
@@ -108,6 +139,8 @@ scripts/g2010-print --dry-run file.pdf                # แปลงอย่า
   [roadmap ที่รีวิวแล้ว](docs/research/reviewed-roadmap.md)
 
 ผลของบางคำสั่งระบบมีหมายเลขซีเรียลของเครื่องพิมพ์ ควรลบก่อนเผยแพร่ log
+
+<a id="license"></a>
 
 ## สัญญาอนุญาต
 

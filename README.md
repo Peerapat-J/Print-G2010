@@ -1,6 +1,27 @@
-# Canon PIXMA Driver
+<p align="center">
+  <img src="docs/images/app-icon.png" width="128" alt="Print G2010 app icon">
+</p>
 
-**English** | [ภาษาไทย](README.th.md)
+<h1 align="center">Print G2010</h1>
+
+<p align="center"><b>Printing for the Canon PIXMA G2010 on Apple silicon Macs</b></p>
+
+<p align="center"><i>Add your files. Pick the pages. Print, in reading order.</i></p>
+
+<p align="center">
+  <img src="https://img.shields.io/badge/App-v1.0.0-8250df" alt="App: v1.0.0">
+  <img src="https://img.shields.io/badge/macOS-14%2B-555555?logo=apple&logoColor=white" alt="macOS: 14+">
+  <img src="https://img.shields.io/badge/Hardware-Apple%20silicon-6e56cf?logo=apple&logoColor=white" alt="Hardware: Apple silicon">
+  <img src="https://img.shields.io/badge/Printer-Canon%20G2010-c1121f" alt="Printer: Canon G2010">
+  <img src="https://img.shields.io/badge/Price-Free%20to%20use-2da66b" alt="Price: Free to use">
+  <img src="https://img.shields.io/badge/Printing-Gutenprint-2f6fed" alt="Printing: Gutenprint">
+</p>
+
+<p align="center"><a href="#app">Features</a> · <a href="#how">How it works</a> · <a href="#build">Build</a> · <a href="#share">Sharing</a> · <a href="#limits">Limits</a> · <a href="#license">Licenses</a></p>
+
+<p align="center"><b>English</b> &nbsp;|&nbsp; <a href="README.th.md">ภาษาไทย</a></p>
+
+---
 
 Print on a **Canon PIXMA G2010** from a Mac. Canon provides no driver for this printer on recent
 versions of macOS, and its G2000 driver hangs on a Mac with Apple silicon. This project prints
@@ -10,6 +31,8 @@ wraps it in a small app, **Print G2010**.
 Status (3 Nov 2026): **printing works** on an M1 Pro MacBook Pro running macOS 27.2 with the G2010
 connected over USB. Scanning worked in earlier experiments (SANE, 300 DPI) but is not part of the
 app yet.
+
+<a id="app"></a>
 
 ## The app
 
@@ -28,6 +51,8 @@ Print G2010 is a single window:
 The app is self-contained: it carries the print script, the page-splitting tool, Gutenprint and
 its printer description, so it does not need this repository to run, and it finds the G2010's
 print queue by itself.
+
+<a id="how"></a>
 
 ## How it works
 
@@ -52,6 +77,8 @@ added once in System Settings → Printers & Scanners (any driver; the app does 
 To build it: Xcode, Homebrew, and `pkgconf` and `xcodegen` from Homebrew. Only tested on macOS 27.2
 with Xcode 27.2.
 
+<a id="build"></a>
+
 ## Build and run
 
 ```sh
@@ -71,6 +98,8 @@ scripts/g2010-print --dry-run file.pdf                # convert only, send nothi
 
 `G2010_DRY_RUN=1 "build/Print G2010.app/Contents/MacOS/Print G2010" --selftest file.pdf` runs the
 app's printing code without a printer or paper.
+
+<a id="share"></a>
 
 ## Sharing the app
 
@@ -93,6 +122,8 @@ choose Open Anyway once; the Read Me in the DMG explains how.
 | `project.yml`, `PrintG2010.xcodeproj` | Xcode project (generated from `project.yml` by XcodeGen) |
 | `docs/` | Notes and research, **in Thai** |
 
+<a id="limits"></a>
+
 ## Known limits
 
 - Apple silicon only; macOS 14 or later.
@@ -113,6 +144,8 @@ choose Open Anyway once; the Read Me in the DMG explains how.
   [reviewed roadmap](docs/research/reviewed-roadmap.md)
 
 Printer serial numbers appear in some system commands' output; remove them before publishing logs.
+
+<a id="license"></a>
 
 ## Licenses
 
