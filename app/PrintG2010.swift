@@ -360,6 +360,117 @@ final class PrintModel: ObservableObject {
 
 // MARK: - Views
 
+struct CopiesField: View {
+    @Binding var text: String
+
+    var body: some View {
+        HStack(spacing: 6) {
+            TextField("", text: $text)
+                .multilineTextAlignment(.trailing)
+                .frame(width: 48)
+                .onChange(of: text) { _, v in
+                    // digits only, at most two of them
+                    let clean = String(v.filter { $0.isASCII && $0.isNumber }.prefix(2))
+                    if clean != v { text = clean }
+                }
+            Stepper("", value: Binding(get: { parseCopies(text) ?? 1 }, set: { text = String($0) }), in: 1...99)
+                .labelsHidden()
+        }
+    }
+}
+
+struct FileRow: View {
+    @ObservedObject var model: PrintModel
+    let url: URL
+    @State private var askCopies = false
+    @State private var rowCopies = "1"
+
+    var body: some View {
+        let status = model.status(url)
+        HStack(spacing: 10) {
+            Toggle("", isOn: Binding(get: { model.selected.contains(url) },
+                                     set: { model.setSelected(url, $0) }))
+                .toggleStyle(.checkbox)
+                .labelsHidden()
+                .disabled(status.isActive)
+                .help("ติ๊กไฟล์ที่ต้องการพิมพ์ด้วยปุ่ม “พิมพ์ที่เลือก”")
+            Image(nsImage: NSWorkspace.shared.icon(forFile: url.path))
+                .resizable().frame(width: 24, height: 24)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(url.lastPathComponent).lineLimit(1).truncationMode(.middle)
+                Text(url.deletingLastPathComponent().path)
+                    .font(.caption).foregroundStyle(.secondary)
+                    .lineLimit(1).truncationMode(.head)
+            }
+            Spacer(minLength: 4)
+            badge(status)
+            Button { rowCopies = "1"; askCopies = true } label: {
+                Image(systemName: "printer.fill").foregroundStyle(Color.accentColor)
+            }
+            .buttonStyle(.plain)
+            .disabled(status.isActive || !model.printer.canAcceptJobs)
+            .help("พิมพ์ไฟล์นี้")
+            .popover(isPresented: $askCopies, arrowEdge: .bottom) { copiesPopover }
+            Button { model.remove(url) } label: {
+                Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary)
+            }
+            .buttonStyle(.plain)
+            .disabled({ if case .working = status { return true } else { return false } }())
+            .help("เอาออกจากรายการ")
+        }
+    }
+
+    private var copiesPopover: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("พิมพ์ \(url.lastPathComponent)")
+                .font(.headline).lineLimit(1).truncationMode(.middle)
+                .frame(maxWidth: 260, alignment: .leading)
+            HStack {
+                Text("จำนวนชุด")
+                Spacer()
+                CopiesField(text: $rowCopies)
+            }
+            if parseCopies(rowCopies) == nil {
+                Text("กรอกจำนวนชุดเป็นตัวเลข 1–99").font(.caption).foregroundStyle(.red)
+            }
+            HStack {
+                Spacer()
+                Button("ยกเลิก") { askCopies = false }
+                Button("พิมพ์") {
+                    if let n = parseCopies(rowCopies) {
+                        askCopies = false
+                        model.enqueue([url], copies: n)
+                    }
+                }
+                .keyboardShortcut(.defaultAction)
+                .buttonStyle(.borderedProminent)
+                .disabled(parseCopies(rowCopies) == nil)
+            }
+        }
+        .padding(16)
+        .frame(width: 292)
+    }
+
+    @ViewBuilder private func badge(_ status: FileStatus) -> some View {
+        switch status {
+        case .waiting: EmptyView()
+        case .queued: capsule("รอคิว", .blue)
+        case .working(let text): capsule(text, .orange)
+        case .done: capsule("✓ พิมพ์แล้ว", .green)
+        case .failed: capsule("ไม่สำเร็จ", .red)
+        }
+    }
+
+    private func capsule(_ text: String, _ color: Color) -> some View {
+        Text(text)
+            .font(.caption.weight(.medium))
+            .foregroundStyle(color)
+            .padding(.horizontal, 8).padding(.vertical, 3)
+            .background(color.opacity(0.18), in: Capsule())
+            .fixedSize()
+    }
+}
+
 struct ContentView: View {
     @ObservedObject var model: PrintModel
     @State private var targeted = false
@@ -383,19 +494,9 @@ struct ContentView: View {
                 }
                 Spacer()
                 Text("จำนวนชุดต่อไฟล์")
-                TextField("", text: $model.copiesText)
-                    .multilineTextAlignment(.trailing)
-                    .frame(width: 48)
-                    .onChange(of: model.copiesText) { _, v in
-                        // digits only, at most two of them
-                        let clean = String(v.filter { $0.isASCII && $0.isNumber }.prefix(2))
-                        if clean != v { model.copiesText = clean }
-                    }
-                Stepper("", value: Binding(get: { model.copies ?? 1 },
-                                           set: { model.copiesText = String($0) }),
-                        in: 1...99)
-                    .labelsHidden()
+                CopiesField(text: $model.copiesText)
             }
+            .help("จำนวนชุดนี้ใช้กับปุ่ม “พิมพ์ที่เลือก” ส่วนปุ่มเครื่องพิมพ์ที่แต่ละไฟล์จะถามจำนวนชุดเอง")
             if model.copies == nil {
                 Text("กรอกจำนวนชุดเป็นตัวเลข 1–99")
                     .font(.caption).foregroundStyle(.red)
@@ -421,7 +522,7 @@ struct ContentView: View {
         }
         .padding(20)
         .task { await model.monitorPrinter() }
-        .frame(minWidth: 480, idealWidth: 520, minHeight: 460)
+        .frame(minWidth: 500, idealWidth: 560, minHeight: 460)
     }
 
     @ViewBuilder private var printerBadge: some View {
@@ -441,25 +542,6 @@ struct ContentView: View {
         }
     }
 
-    @ViewBuilder private func badge(_ status: FileStatus) -> some View {
-        switch status {
-        case .waiting: EmptyView()
-        case .queued: capsule("รอคิว", .blue)
-        case .working(let text): capsule(text, .orange)
-        case .done: capsule("✓ พิมพ์แล้ว", .green)
-        case .failed: capsule("ไม่สำเร็จ", .red)
-        }
-    }
-
-    private func capsule(_ text: String, _ color: Color) -> some View {
-        Text(text)
-            .font(.caption.weight(.medium))
-            .foregroundStyle(color)
-            .padding(.horizontal, 8).padding(.vertical, 3)
-            .background(color.opacity(0.18), in: Capsule())
-            .fixedSize()
-    }
-
     @ViewBuilder private var fileArea: some View {
         ZStack {
             RoundedRectangle(cornerRadius: 10)
@@ -476,30 +558,7 @@ struct ContentView: View {
             } else {
                 List {
                     ForEach(model.files, id: \.self) { url in
-                        HStack(spacing: 10) {
-                            Toggle("", isOn: Binding(get: { model.selected.contains(url) },
-                                                     set: { model.setSelected(url, $0) }))
-                                .toggleStyle(.checkbox)
-                                .labelsHidden()
-                                .disabled(model.status(url).isActive)
-                                .help("ติ๊กไฟล์ที่ต้องการพิมพ์ด้วยปุ่ม “พิมพ์ที่เลือก”")
-                            Image(nsImage: NSWorkspace.shared.icon(forFile: url.path))
-                                .resizable().frame(width: 24, height: 24)
-                            VStack(alignment: .leading, spacing: 1) {
-                                Text(url.lastPathComponent).lineLimit(1).truncationMode(.middle)
-                                Text(url.deletingLastPathComponent().path)
-                                    .font(.caption).foregroundStyle(.secondary)
-                                    .lineLimit(1).truncationMode(.head)
-                            }
-                            Spacer(minLength: 4)
-                            badge(model.status(url))
-                            Button { model.remove(url) } label: {
-                                Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary)
-                            }
-                            .buttonStyle(.plain)
-                            .disabled({ if case .working = model.status(url) { return true } else { return false } }())
-                            .help("เอาออกจากรายการ")
-                        }
+                        FileRow(model: model, url: url)
                     }
                 }
                 .scrollContentBackground(.hidden)
@@ -542,7 +601,7 @@ struct ContentView: View {
     private var idleText: String {
         if model.files.isEmpty { return "ยังไม่ได้เลือกไฟล์" }
         if !model.printer.canAcceptJobs { return "รอเครื่องพิมพ์พร้อมก่อนจึงจะพิมพ์ได้" }
-        if model.selectedFiles.isEmpty { return "ติ๊กไฟล์ที่ต้องการพิมพ์" }
+        if model.selectedFiles.isEmpty { return "ติ๊กไฟล์ที่ต้องการพิมพ์ หรือกดปุ่มเครื่องพิมพ์ที่ไฟล์" }
         return "พร้อมพิมพ์"
     }
 
@@ -608,7 +667,7 @@ struct PrintG2010App: App {
         Window("Print G2010", id: "main") {
             ContentView(model: PrintModel.shared)
         }
-        .defaultSize(width: 520, height: 560)
+        .defaultSize(width: 560, height: 560)
         .windowResizability(.contentMinSize)
     }
 }
