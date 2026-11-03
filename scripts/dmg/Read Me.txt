@@ -15,9 +15,8 @@ Install
   1. Drag "Print G2010" onto the Applications folder.
   2. Open it from Applications.
 
-First time only: macOS will say it "could not verify" the app
-  The app is not signed with a paid Apple developer account, so macOS blocks
-  it the first time. This is expected.
+If macOS says it "could not verify" the app
+  This only happens with a copy that was not notarized by Apple. Then:
   1. In the message that appears, click Done (not "Move to Trash").
   2. Open System Settings > Privacy & Security and scroll down to the
      message about "Print G2010". Click "Open Anyway" and enter your password.
@@ -50,8 +49,7 @@ PRINT G2010 เป็นแอปสั่งพิมพ์ Canon PIXMA G2010 �
 
 ติดตั้ง: ลาก "Print G2010" ไปวางที่โฟลเดอร์ Applications แล้วเปิดจาก Applications
 
-เปิดครั้งแรก macOS จะแจ้งว่าตรวจสอบแอปไม่ได้ (เพราะแอปไม่ได้เซ็นด้วยบัญชีนักพัฒนาของ Apple
-แบบเสียเงิน) ให้ทำดังนี้ครั้งเดียว:
+ถ้า macOS แจ้งว่าตรวจสอบแอปไม่ได้ (เกิดเฉพาะสำเนาที่ไม่ได้ผ่านการ notarize ของ Apple) ให้ทำดังนี้ครั้งเดียว:
   1. กด Done (ห้ามกด Move to Trash)
   2. เปิด System Settings > Privacy & Security เลื่อนลงไปที่ข้อความเกี่ยวกับ "Print G2010"
      กด "Open Anyway" แล้วใส่รหัสผ่านเครื่อง
