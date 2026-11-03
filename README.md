@@ -23,9 +23,10 @@
 
 ---
 
-Canon doesn't make a driver for the **PIXMA G2010** on recent Macs, so I made a small one.
+Canon doesn't make a driver for the **PIXMA G2010** on recent Macs, so this project aim to fix this problem for Mac people in my office.
+Canon G20x0 series are cheap and we have a lot of them in my office but it's not Mac support 😅
 Print G2010 is a free app that prints to the G2010 over USB (with a USB to USB-C adapter) from a Mac
-with Apple silicon.
+with Apple silicon only since I don't have any Mac with Intel chip so, that's it.
 
 <a id="features"></a>
 
@@ -72,5 +73,7 @@ open "build/Print G2010.app"
 
 Printing is done by [Gutenprint](https://gutenprint.sourceforge.io/), free software under the GNU
 GPL, which the app includes. This project isn't affiliated with Canon.
+
+Good luck.
 
 © 2026 Peerapat Jardrit
