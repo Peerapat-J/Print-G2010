@@ -1,0 +1,67 @@
+# Source of truth for the Xcode project. Regenerate PrintG2010.xcodeproj with `xcodegen`.
+name: PrintG2010
+options:
+  bundleIdPrefix: local.canon-pixma-driver
+  deploymentTarget:
+    macOS: "14.0"
+  createIntermediateGroups: true
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    MARKETING_VERSION: "1.0.0"
+    CURRENT_PROJECT_VERSION: "1"
+    ARCHS: arm64
+    # Ad-hoc signing: no Apple Developer account is needed to build or run locally.
+    CODE_SIGN_STYLE: Manual
+    CODE_SIGN_IDENTITY: "-"
+    # The app starts helper processes (cupsfilter, lp, the print script), so no sandbox.
+    ENABLE_APP_SANDBOX: NO
+    ENABLE_HARDENED_RUNTIME: NO
+    # The "Bundle helpers" phase reads scripts/ and build/ outside the declared inputs.
+    ENABLE_USER_SCRIPT_SANDBOXING: NO
+
+targets:
+  pdf-tool:
+    type: tool
+    platform: macOS
+    sources:
+      - tools/pdf-tool
+
+  PrintG2010:
+    type: application
+    platform: macOS
+    sources:
+      - path: app
+        excludes:
+          - Info.plist
+    dependencies:
+      - target: pdf-tool
+        link: false
+    settings:
+      base:
+        PRODUCT_NAME: Print G2010
+        PRODUCT_BUNDLE_IDENTIFIER: local.canon-pixma-driver.print-g2010
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+    info:
+      path: app/Info.plist
+      properties:
+        CFBundleName: $(PRODUCT_NAME)
+        CFBundleDisplayName: Print G2010
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        LSMinimumSystemVersion: $(MACOSX_DEPLOYMENT_TARGET)
+        LSApplicationCategoryType: public.app-category.utilities
+        NSHighResolutionCapable: true
+        NSPrincipalClass: NSApplication
+        CFBundleDocumentTypes:
+          - CFBundleTypeName: Printable files
+            CFBundleTypeRole: Viewer
+            LSHandlerRank: Alternate
+            LSItemContentTypes:
+              - com.adobe.pdf
+              - public.image
+              - public.plain-text
+    postBuildScripts:
+      - name: Bundle helpers
+        script: '"${SRCROOT}/scripts/xcode-bundle-helpers.sh"'
+        basedOnDependencyAnalysis: false

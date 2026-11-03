@@ -1,6 +1,6 @@
 // Print G2010: a one-window front end for scripts/g2010-print.
 // Pick or drop files, set the number of copies, press print, watch the status.
-// Built by scripts/build-app.sh; the repo path is stored in Info.plist (G2010Root).
+// Built by the Xcode project (see project.yml); the helpers it needs are bundled in the app.
 
 import SwiftUI
 import AppKit
@@ -52,7 +52,12 @@ struct ProcessResult {
 }
 
 enum Engine {
-    static let root = (Bundle.main.object(forInfoDictionaryKey: "G2010Root") as? String) ?? ""
+    /// Directory with scripts/g2010-print and build/ (Gutenprint, PPD, pdf-tool). The Xcode build
+    /// copies them into the app; G2010_ROOT points at a repo checkout instead.
+    static let root: String = {
+        if let override = ProcessInfo.processInfo.environment["G2010_ROOT"] { return override }
+        return (Bundle.main.resourcePath ?? "") + "/g2010"
+    }()
     static let env = ProcessInfo.processInfo.environment
     static let dryRun = env["G2010_DRY_RUN"] == "1"
     /// The CUPS queue used for printing. Found with `lpstat -v` (see `refreshQueue`);

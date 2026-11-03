@@ -1,0 +1,439 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		2CFD6CB24CC1CE244160254C /* main.swift in Sources */ = {isa = PBXBuildFile; fileRef = F3174D7975CD5E48429CF872 /* main.swift */; };
+		8DC4E86DA9A046065DE0C02D /* PrintG2010.swift in Sources */ = {isa = PBXBuildFile; fileRef = 37021612912B40861A4AED67 /* PrintG2010.swift */; };
+		F978D472C4C4770D0833888D /* pdf-tool in Resources */ = {isa = PBXBuildFile; fileRef = 8AC528ED5E669119FE0CE92B /* pdf-tool */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		60DC2022F7EE1EAC196D1DC2 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 144E5242C415210763F9BF29 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 862F61280B3026D5D18A2B94;
+			remoteInfo = "pdf-tool";
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXFileReference section */
+		33434985CCAED04134D539BC /* PrintG2010.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = PrintG2010.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		37021612912B40861A4AED67 /* PrintG2010.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PrintG2010.swift; sourceTree = "<group>"; };
+		8AC528ED5E669119FE0CE92B /* pdf-tool */ = {isa = PBXFileReference; includeInIndex = 0; path = "pdf-tool"; sourceTree = BUILT_PRODUCTS_DIR; };
+		F3174D7975CD5E48429CF872 /* main.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = main.swift; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXGroup section */
+		0C02DC9F49FC11E6A6969E81 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				8AC528ED5E669119FE0CE92B /* pdf-tool */,
+				33434985CCAED04134D539BC /* PrintG2010.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		BD6789BFB0B7C4FAC2A65758 /* pdf-tool */ = {
+			isa = PBXGroup;
+			children = (
+				F3174D7975CD5E48429CF872 /* main.swift */,
+			);
+			path = "pdf-tool";
+			sourceTree = "<group>";
+		};
+		C85BD5FCFB73816B34488E69 = {
+			isa = PBXGroup;
+			children = (
+				CD024DCF69AAFD3559FF81CA /* app */,
+				D67C1C6C353BDB24E655B390 /* tools */,
+				0C02DC9F49FC11E6A6969E81 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		CD024DCF69AAFD3559FF81CA /* app */ = {
+			isa = PBXGroup;
+			children = (
+				37021612912B40861A4AED67 /* PrintG2010.swift */,
+			);
+			path = app;
+			sourceTree = "<group>";
+		};
+		D67C1C6C353BDB24E655B390 /* tools */ = {
+			isa = PBXGroup;
+			children = (
+				BD6789BFB0B7C4FAC2A65758 /* pdf-tool */,
+			);
+			path = tools;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		862F61280B3026D5D18A2B94 /* pdf-tool */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 5597FE7AB5E095AC8928C87F /* Build configuration list for PBXNativeTarget "pdf-tool" */;
+			buildPhases = (
+				F91E54A46AEEF272CAD2578E /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = "pdf-tool";
+			packageProductDependencies = (
+			);
+			productName = "pdf-tool";
+			productReference = 8AC528ED5E669119FE0CE92B /* pdf-tool */;
+			productType = "com.apple.product-type.tool";
+		};
+		AB5E9804EA9D66375BEB71FB /* PrintG2010 */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 3C1E7C9A2241CAD267CC7A5A /* Build configuration list for PBXNativeTarget "PrintG2010" */;
+			buildPhases = (
+				FE5912ACA44C8B93DADD0FD3 /* Sources */,
+				2D81EB3A1B0205EF95EEF02A /* Resources */,
+				E1D5041180316262535B9767 /* Bundle helpers */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				A3F4866EE77202F61B40E8D5 /* PBXTargetDependency */,
+			);
+			name = PrintG2010;
+			packageProductDependencies = (
+			);
+			productName = PrintG2010;
+			productReference = 33434985CCAED04134D539BC /* PrintG2010.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		144E5242C415210763F9BF29 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 1430;
+				TargetAttributes = {
+					862F61280B3026D5D18A2B94 = {
+						ProvisioningStyle = Manual;
+					};
+					AB5E9804EA9D66375BEB71FB = {
+						ProvisioningStyle = Manual;
+					};
+				};
+			};
+			buildConfigurationList = 018CB56BFEBE8507FE73ED1E /* Build configuration list for PBXProject "PrintG2010" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				Base,
+				en,
+			);
+			mainGroup = C85BD5FCFB73816B34488E69;
+			minimizedProjectReferenceProxies = 1;
+			preferredProjectObjectVersion = 77;
+			productRefGroup = 0C02DC9F49FC11E6A6969E81 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				862F61280B3026D5D18A2B94 /* pdf-tool */,
+				AB5E9804EA9D66375BEB71FB /* PrintG2010 */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		2D81EB3A1B0205EF95EEF02A /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				F978D472C4C4770D0833888D /* pdf-tool in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXShellScriptBuildPhase section */
+		E1D5041180316262535B9767 /* Bundle helpers */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "Bundle helpers";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "\"${SRCROOT}/scripts/xcode-bundle-helpers.sh\"";
+		};
+/* End PBXShellScriptBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		F91E54A46AEEF272CAD2578E /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				2CFD6CB24CC1CE244160254C /* main.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		FE5912ACA44C8B93DADD0FD3 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				8DC4E86DA9A046065DE0C02D /* PrintG2010.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		A3F4866EE77202F61B40E8D5 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 862F61280B3026D5D18A2B94 /* pdf-tool */;
+			targetProxy = 60DC2022F7EE1EAC196D1DC2 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		05F321C7EA784F08EA338DDB /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				COMBINE_HIDPI_IMAGES = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = "local.canon-pixma-driver.pdf-tool";
+				SDKROOT = macosx;
+			};
+			name = Release;
+		};
+		11BD8D9956A9F31839BA1300 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				COMBINE_HIDPI_IMAGES = YES;
+				INFOPLIST_FILE = app/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = "local.canon-pixma-driver.print-g2010";
+				PRODUCT_NAME = "Print G2010";
+				SDKROOT = macosx;
+			};
+			name = Debug;
+		};
+		8B2759D8DA1EC8E7AEB9BF61 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				COMBINE_HIDPI_IMAGES = YES;
+				INFOPLIST_FILE = app/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = "local.canon-pixma-driver.print-g2010";
+				PRODUCT_NAME = "Print G2010";
+				SDKROOT = macosx;
+			};
+			name = Release;
+		};
+		8F776BDDF29A0D0AFE116B0B /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ARCHS = arm64;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CODE_SIGN_IDENTITY = "-";
+				CODE_SIGN_STYLE = Manual;
+				COPY_PHASE_STRIP = NO;
+				CURRENT_PROJECT_VERSION = 1;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_APP_SANDBOX = NO;
+				ENABLE_HARDENED_RUNTIME = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MARKETING_VERSION = 1.0.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		D5CD527038EEDCB1477E189E /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				COMBINE_HIDPI_IMAGES = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = "local.canon-pixma-driver.pdf-tool";
+				SDKROOT = macosx;
+			};
+			name = Debug;
+		};
+		DD6D80F5FF7C898B6F65E3BC /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ARCHS = arm64;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CODE_SIGN_IDENTITY = "-";
+				CODE_SIGN_STYLE = Manual;
+				COPY_PHASE_STRIP = NO;
+				CURRENT_PROJECT_VERSION = 1;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_APP_SANDBOX = NO;
+				ENABLE_HARDENED_RUNTIME = NO;
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MARKETING_VERSION = 1.0.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		018CB56BFEBE8507FE73ED1E /* Build configuration list for PBXProject "PrintG2010" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				8F776BDDF29A0D0AFE116B0B /* Debug */,
+				DD6D80F5FF7C898B6F65E3BC /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		3C1E7C9A2241CAD267CC7A5A /* Build configuration list for PBXNativeTarget "PrintG2010" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				11BD8D9956A9F31839BA1300 /* Debug */,
+				8B2759D8DA1EC8E7AEB9BF61 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		5597FE7AB5E095AC8928C87F /* Build configuration list for PBXNativeTarget "pdf-tool" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				D5CD527038EEDCB1477E189E /* Debug */,
+				05F321C7EA784F08EA338DDB /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = 144E5242C415210763F9BF29 /* Project object */;
+}
