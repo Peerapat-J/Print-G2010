@@ -130,6 +130,14 @@ enum PrintState: Equatable {
     case failed(String)
 }
 
+/// Per-file badge in the list.
+enum FileStatus: Equatable {
+    case waiting
+    case working(String)
+    case done
+    case failed
+}
+
 /// Progress of one run of scripts/g2010-print, fed by its "@@" lines.
 @MainActor
 final class FileRun {
@@ -155,6 +163,7 @@ final class PrintModel: ObservableObject {
     static let shared = PrintModel()
 
     @Published var files: [URL] = []
+    @Published var fileStatus: [URL: FileStatus] = [:]
     @Published var copiesText = "1"
     @Published var state: PrintState = .idle
     @Published var printer: PrinterStatus = .checking
@@ -173,6 +182,10 @@ final class PrintModel: ObservableObject {
         if case .working = state { return true }
         return false
     }
+
+    func status(_ url: URL) -> FileStatus { fileStatus[url] ?? .waiting }
+
+    var allPrinted: Bool { !files.isEmpty && files.allSatisfy { status($0) == .done } }
 
     var canPrint: Bool {
         !files.isEmpty && !busy && copies != nil && printer.canAcceptJobs
@@ -206,17 +219,23 @@ final class PrintModel: ObservableObject {
     func remove(_ url: URL) {
         guard !busy else { return }
         files.removeAll { $0 == url }
+        fileStatus[url] = nil
     }
 
     func clear() {
         guard !busy else { return }
         files = []
+        fileStatus = [:]
         state = .idle
     }
 
+    /// Prints the files not printed yet; when every file is already printed, prints them all again.
     func print() {
-        guard !files.isEmpty, !busy, let copies = self.copies else { return }
-        let todo = files
+        guard !busy, let copies = self.copies else { return }
+        var todo = files.filter { status($0) != .done }
+        if todo.isEmpty { todo = files }
+        guard !todo.isEmpty else { return }
+        todo.forEach { fileStatus[$0] = .waiting }
         state = .working("กำลังเริ่ม…")
         let reverse = reverseOrder
         Task { await self.runAll(todo, copies: copies, reverse: reverse) }
@@ -245,6 +264,7 @@ final class PrintModel: ObservableObject {
         args.append(file.path)
 
         let run = FileRun()
+        fileStatus[file] = .working("กำลังเตรียม")
         state = .working("\(prefix)กำลังเตรียมไฟล์ \(name)")
         Task {
             let r = await Engine.run(Engine.script, args) { line in
@@ -266,13 +286,16 @@ final class PrintModel: ObservableObject {
             if let r = run.result, r.status != 0 {
                 let detail = r.stderr.split(separator: "\n")
                     .filter { !$0.hasPrefix("@@") }.suffix(3).joined(separator: "\n")
+                fileStatus[file] = .failed
                 state = .failed("พิมพ์ \(name) ไม่สำเร็จ\n\(detail)")
                 return false
             }
             if run.result != nil && queued == 0 {
+                fileStatus[file] = .done
                 return true
             }
             if run.result != nil && Date().timeIntervalSince(lastProgress) > 180 {
+                fileStatus[file] = .failed
                 state = .failed("\(name): งานค้างอยู่ในคิวนานเกินไป ตรวจที่เครื่องพิมพ์ว่าเปิดอยู่ มีกระดาษ และไม่มีไฟเตือน")
                 return false
             }
@@ -281,6 +304,7 @@ final class PrintModel: ObservableObject {
             if run.jobs.isEmpty {
                 state = .working("\(prefix)กำลังเตรียมไฟล์ \(name) (\(elapsed) วินาที)")
             } else {
+                fileStatus[file] = .working("พิมพ์แล้ว \(printed)/\(run.total) หน้า")
                 state = .working("\(prefix)\(name) — ส่งแล้ว \(run.sent)/\(run.total) หน้า · "
                                  + "พิมพ์แล้ว \(printed)/\(run.total) หน้า (\(elapsed) วินาที)")
             }
@@ -342,7 +366,7 @@ struct ContentView: View {
             Button {
                 model.print()
             } label: {
-                Text("พิมพ์").frame(maxWidth: .infinity).padding(.vertical, 4)
+                Text(model.allPrinted ? "พิมพ์ซ้ำ" : "พิมพ์").frame(maxWidth: .infinity).padding(.vertical, 4)
             }
             .keyboardShortcut(.defaultAction)
             .buttonStyle(.borderedProminent)
@@ -373,6 +397,23 @@ struct ContentView: View {
         }
     }
 
+    @ViewBuilder private func badge(_ status: FileStatus) -> some View {
+        switch status {
+        case .waiting: EmptyView()
+        case .working(let text): capsule(text, .orange)
+        case .done: capsule("✓ พิมพ์แล้ว", .green)
+        case .failed: capsule("ไม่สำเร็จ", .red)
+        }
+    }
+
+    private func capsule(_ text: String, _ color: Color) -> some View {
+        Text(text)
+            .font(.caption.weight(.medium))
+            .foregroundStyle(color)
+            .padding(.horizontal, 8).padding(.vertical, 3)
+            .background(color.opacity(0.18), in: Capsule())
+    }
+
     @ViewBuilder private var fileArea: some View {
         ZStack {
             RoundedRectangle(cornerRadius: 10)
@@ -399,6 +440,7 @@ struct ContentView: View {
                                     .lineLimit(1).truncationMode(.head)
                             }
                             Spacer()
+                            badge(model.status(url))
                             Button { model.remove(url) } label: {
                                 Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary)
                             }
