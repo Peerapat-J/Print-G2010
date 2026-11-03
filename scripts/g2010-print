@@ -61,9 +61,9 @@ export PPD
 # Progress lines starting with "@@" on stderr are read by the app (app/PrintG2010.swift):
 #   @@total N   pages to send (pages x copies)     @@convert K   converting page K
 #   @@job ID    CUPS job created                   @@page A/N    A of N pages sent
-if [ ! -x "$TOOL" ] || [ "$ROOT/app/pdf-tool.swift" -nt "$TOOL" ]; then
+if [ ! -x "$TOOL" ] || [ "$ROOT/tools/pdf-tool/main.swift" -nt "$TOOL" ]; then
   mkdir -p "$(dirname "$TOOL")"
-  swiftc -O -o "$TOOL" "$ROOT/app/pdf-tool.swift" || { echo "cannot build pdf-tool (needs Xcode command line tools)" >&2; exit 1; }
+  swiftc -O -o "$TOOL" "$ROOT/tools/pdf-tool/main.swift" || { echo "cannot build pdf-tool (needs Xcode command line tools)" >&2; exit 1; }
 fi
 
 case "$(echo "${FILE##*.}" | tr A-Z a-z)" in
