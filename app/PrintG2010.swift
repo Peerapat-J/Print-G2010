@@ -163,6 +163,7 @@ final class PrintModel: ObservableObject {
     static let shared = PrintModel()
 
     @Published var files: [URL] = []
+    @Published var selected: Set<URL> = []
     @Published var fileStatus: [URL: FileStatus] = [:]
     @Published var copiesText = "1"
     @Published var state: PrintState = .idle
@@ -185,10 +186,11 @@ final class PrintModel: ObservableObject {
 
     func status(_ url: URL) -> FileStatus { fileStatus[url] ?? .waiting }
 
-    var allPrinted: Bool { !files.isEmpty && files.allSatisfy { status($0) == .done } }
+    /// Ticked files, in list order.
+    var selectedFiles: [URL] { files.filter { selected.contains($0) } }
 
     var canPrint: Bool {
-        !files.isEmpty && !busy && copies != nil && printer.canAcceptJobs
+        !selectedFiles.isEmpty && !busy && copies != nil && printer.canAcceptJobs
     }
 
     func monitorPrinter() async {
@@ -206,6 +208,7 @@ final class PrintModel: ObservableObject {
                 rejected.append(url.lastPathComponent)
             } else if !files.contains(url) {
                 files.append(url)
+                selected.insert(url)
             }
         }
         if rejected.isEmpty {
@@ -216,24 +219,29 @@ final class PrintModel: ObservableObject {
         }
     }
 
+    func setSelected(_ url: URL, _ on: Bool) {
+        if on { selected.insert(url) } else { selected.remove(url) }
+    }
+
     func remove(_ url: URL) {
         guard !busy else { return }
         files.removeAll { $0 == url }
+        selected.remove(url)
         fileStatus[url] = nil
     }
 
     func clear() {
         guard !busy else { return }
         files = []
+        selected = []
         fileStatus = [:]
         state = .idle
     }
 
-    /// Prints the files not printed yet; when every file is already printed, prints them all again.
-    func print() {
+    /// Big button: every ticked file, top to bottom, with the copies field.
+    func printSelected() {
         guard !busy, let copies = self.copies else { return }
-        var todo = files.filter { status($0) != .done }
-        if todo.isEmpty { todo = files }
+        let todo = selectedFiles
         guard !todo.isEmpty else { return }
         todo.forEach { fileStatus[$0] = .waiting }
         state = .working("กำลังเริ่ม…")
@@ -292,6 +300,7 @@ final class PrintModel: ObservableObject {
             }
             if run.result != nil && queued == 0 {
                 fileStatus[file] = .done
+                selected.remove(file)   // ticked = still to print
                 return true
             }
             if run.result != nil && Date().timeIntervalSince(lastProgress) > 180 {
@@ -338,7 +347,7 @@ struct ContentView: View {
                         .disabled(model.busy)
                 }
                 Spacer()
-                Text("จำนวนชุด")
+                Text("จำนวนชุดต่อไฟล์")
                 TextField("", text: $model.copiesText)
                     .multilineTextAlignment(.trailing)
                     .frame(width: 48)
@@ -364,9 +373,11 @@ struct ContentView: View {
                 .disabled(model.busy)
 
             Button {
-                model.print()
+                model.printSelected()
             } label: {
-                Text(model.allPrinted ? "พิมพ์ซ้ำ" : "พิมพ์").frame(maxWidth: .infinity).padding(.vertical, 4)
+                let n = model.selectedFiles.count
+                Text(n > 0 ? "พิมพ์ที่เลือก (\(n) ไฟล์)" : "พิมพ์ที่เลือก")
+                    .frame(maxWidth: .infinity).padding(.vertical, 4)
             }
             .keyboardShortcut(.defaultAction)
             .buttonStyle(.borderedProminent)
@@ -430,7 +441,13 @@ struct ContentView: View {
             } else {
                 List {
                     ForEach(model.files, id: \.self) { url in
-                        HStack {
+                        HStack(spacing: 10) {
+                            Toggle("", isOn: Binding(get: { model.selected.contains(url) },
+                                                     set: { model.setSelected(url, $0) }))
+                                .toggleStyle(.checkbox)
+                                .labelsHidden()
+                                .disabled(model.busy)
+                                .help("ติ๊กไฟล์ที่ต้องการพิมพ์ด้วยปุ่ม “พิมพ์ที่เลือก”")
                             Image(nsImage: NSWorkspace.shared.icon(forFile: url.path))
                                 .resizable().frame(width: 24, height: 24)
                             VStack(alignment: .leading, spacing: 1) {
@@ -472,8 +489,9 @@ struct ContentView: View {
             case .idle:
                 Image(systemName: "circle.dashed").foregroundStyle(.secondary)
                 Text(model.files.isEmpty ? "ยังไม่ได้เลือกไฟล์"
-                     : model.printer.canAcceptJobs ? "พร้อมพิมพ์ กดปุ่ม “พิมพ์”"
-                     : "รอเครื่องพิมพ์พร้อมก่อนจึงจะพิมพ์ได้")
+                     : !model.printer.canAcceptJobs ? "รอเครื่องพิมพ์พร้อมก่อนจึงจะพิมพ์ได้"
+                     : model.selectedFiles.isEmpty ? "ติ๊กไฟล์ที่ต้องการพิมพ์"
+                     : "พร้อมพิมพ์")
                     .foregroundStyle(.secondary)
             case .working(let msg):
                 ProgressView().controlSize(.small)
@@ -515,7 +533,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Headless check: print the given file through the same code path and report the end state.
         let model = PrintModel.shared
         model.add([URL(fileURLWithPath: args[i + 1])])
-        model.print()
+        model.printSelected()
         Timer.scheduledTimer(withTimeInterval: 0.3, repeats: true) { t in
             MainActor.assumeIsolated {
                 if !model.busy {
