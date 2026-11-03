@@ -422,9 +422,6 @@ struct FileRow: View {
 
     private var copiesPopover: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("พิมพ์ \(url.lastPathComponent)")
-                .font(.headline).lineLimit(1).truncationMode(.middle)
-                .frame(maxWidth: 260, alignment: .leading)
             HStack {
                 Text("จำนวนชุด")
                 Spacer()
