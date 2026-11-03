@@ -4,6 +4,7 @@
 
 import SwiftUI
 import AppKit
+import PDFKit
 import UniformTypeIdentifiers
 
 // MARK: - Running the print script
@@ -150,6 +151,8 @@ struct PrintJob {
     var url: URL
     var copies: Int
     var reverse: Bool
+    /// Empty for every page, otherwise what g2010-print --pages accepts.
+    var pages: String
 }
 
 /// Progress of one run of scripts/g2010-print, fed by its "@@" lines.
@@ -174,6 +177,34 @@ final class FileRun {
 func parseCopies(_ text: String) -> Int? {
     guard let n = Int(text), (1...99).contains(n) else { return nil }
     return n
+}
+
+enum PageMode: String, CaseIterable, Identifiable {
+    case all = "All pages"
+    case odd = "Odd pages"
+    case even = "Even pages"
+    case custom = "Custom…"
+
+    var id: String { rawValue }
+}
+
+/// An error message, or nil when `spec` is a usable list such as "1, 3, 5-9".
+func pageSpecError(_ spec: String, pageCount: Int?) -> String? {
+    let parts = spec.filter { !$0.isWhitespace }.split(separator: ",", omittingEmptySubsequences: false)
+    if parts.contains(where: \.isEmpty) { return "Enter pages such as 1, 3, 5-9" }
+    for part in parts {
+        let nums = part.split(separator: "-", omittingEmptySubsequences: false)
+        guard nums.count <= 2, nums.allSatisfy({ !$0.isEmpty && $0.allSatisfy { $0.isASCII && $0.isNumber } }) else {
+            return "“\(part)” is not a page or a range"
+        }
+        let values = nums.compactMap { Int($0) }
+        if values.contains(where: { $0 < 1 }) { return "Pages start at 1" }
+        if values.count == 2, values[0] > values[1] { return "“\(part)” is backwards" }
+        if let n = pageCount, let top = values.max(), top > n {
+            return "Page \(top) does not exist (the document has \(n))"
+        }
+    }
+    return nil
 }
 
 @MainActor
@@ -256,13 +287,13 @@ final class PrintModel: ObservableObject {
     }
 
     /// Adds files to the print queue; files already queued or printing are skipped.
-    func enqueue(_ urls: [URL], copies: Int) {
+    func enqueue(_ urls: [URL], copies: Int, pages: String = "") {
         let reverse = reverseOrder
         let new = urls.filter { !status($0).isActive }
         guard !new.isEmpty else { return }
         for url in new {
             fileStatus[url] = .queued
-            queue.append(PrintJob(url: url, copies: copies, reverse: reverse))
+            queue.append(PrintJob(url: url, copies: copies, reverse: reverse, pages: pages))
         }
         if !running {
             running = true
@@ -304,6 +335,7 @@ final class PrintModel: ObservableObject {
         let name = file.lastPathComponent
         var args = ["-n", String(job.copies)]
         if !job.reverse { args.append("--no-reverse") }
+        if !job.pages.isEmpty { args += ["--pages", job.pages] }
         if Engine.dryRun { args.append("--dry-run") }
         args.append(file.path)
 
@@ -384,6 +416,9 @@ struct FileRow: View {
     let url: URL
     @State private var askCopies = false
     @State private var rowCopies = "1"
+    @State private var pageMode = PageMode.all
+    @State private var pageSpec = ""
+    @State private var pageCount: Int?
 
     var body: some View {
         let status = model.status(url)
@@ -404,7 +439,7 @@ struct FileRow: View {
             }
             Spacer(minLength: 4)
             badge(status)
-            Button { rowCopies = "1"; askCopies = true } label: {
+            Button { openPopover() } label: {
                 Image(systemName: "printer.fill").foregroundStyle(Color.accentColor)
             }
             .buttonStyle(.plain)
@@ -420,6 +455,31 @@ struct FileRow: View {
         }
     }
 
+    private func openPopover() {
+        rowCopies = "1"
+        pageMode = .all
+        pageSpec = ""
+        pageCount = url.pathExtension.lowercased() == "pdf" ? PDFDocument(url: url)?.pageCount : nil
+        askCopies = true
+    }
+
+    private var pagesError: String? {
+        switch pageMode {
+        case .custom: return pageSpecError(pageSpec, pageCount: pageCount)
+        case .even: return (pageCount ?? 2) < 2 ? "This document has no even pages" : nil
+        default: return nil
+        }
+    }
+
+    private var pagesArgument: String {
+        switch pageMode {
+        case .all: return ""
+        case .odd: return "odd"
+        case .even: return "even"
+        case .custom: return pageSpec.filter { !$0.isWhitespace }
+        }
+    }
+
     private var copiesPopover: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
@@ -431,21 +491,40 @@ struct FileRow: View {
                 Text("Enter a number from 1 to 99").font(.caption).foregroundStyle(.red)
             }
             HStack {
+                Text("Pages")
+                Spacer()
+                Picker("", selection: $pageMode) {
+                    ForEach(PageMode.allCases) { Text($0.rawValue).tag($0) }
+                }
+                .labelsHidden()
+                .frame(width: 150)
+            }
+            if pageMode == .custom {
+                TextField("e.g. 1, 3, 5-9 or 8", text: $pageSpec)
+                    .textFieldStyle(.roundedBorder)
+            }
+            if let error = pagesError, pageMode != .custom || !pageSpec.isEmpty {
+                Text(error).font(.caption).foregroundStyle(.red)
+            } else if let n = pageCount {
+                Text("This document has \(n) \(n == 1 ? "page" : "pages").")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+            HStack {
                 Spacer()
                 Button("Cancel") { askCopies = false }
                 Button("Print") {
-                    if let n = parseCopies(rowCopies) {
+                    if let n = parseCopies(rowCopies), pagesError == nil {
                         askCopies = false
-                        model.enqueue([url], copies: n)
+                        model.enqueue([url], copies: n, pages: pagesArgument)
                     }
                 }
                 .keyboardShortcut(.defaultAction)
                 .buttonStyle(.borderedProminent)
-                .disabled(parseCopies(rowCopies) == nil)
+                .disabled(parseCopies(rowCopies) == nil || pagesError != nil)
             }
         }
         .padding(16)
-        .frame(width: 292)
+        .frame(width: 300)
     }
 
     @ViewBuilder private func badge(_ status: FileStatus) -> some View {
