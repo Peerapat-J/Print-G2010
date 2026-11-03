@@ -1,0 +1,6 @@
+# Generated test artifacts and local document images must not be published.
+/output/
+/tmp/
+
+# Local build output (Gutenprint source, staged binaries, generated PPD).
+/build/

@@ -1,0 +1,64 @@
+#!/bin/bash
+# Print a file on the Canon G2010 without the Canon driver.
+#   PDF/images/text -> CUPS raster (Apple filters) -> Gutenprint -> USB (raw job)
+#   Office documents must be exported to PDF first (see the error message).
+# The job is sent raw, so the queue's own (Canon) filters are bypassed.
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+STAGE="$ROOT/build/stage"
+PPD="$ROOT/build/ppd/stp-bjc-G2000-series.5.3.ppd"
+FILTER="$STAGE/usr/libexec/cups/filter/rastertogutenprint.5.3"
+QUEUE="${G2010_QUEUE:-Canon_G2010_series}"
+PAPER="A4"
+COPIES=1
+DRY=0
+
+usage() { echo "usage: $0 [-q queue] [-p PageSize] [-n copies] [--dry-run] file" >&2; exit 2; }
+while [ $# -gt 0 ]; do
+  case "$1" in
+    -q) QUEUE="$2"; shift 2;;
+    -p) PAPER="$2"; shift 2;;
+    -n) COPIES="$2"; shift 2;;
+    --dry-run) DRY=1; shift;;
+    -h|--help) usage;;
+    --) shift; break;;
+    -*) usage;;
+    *) break;;
+  esac
+done
+[ $# -eq 1 ] || usage
+FILE="$1"
+[ -f "$FILE" ] || { echo "no such file: $FILE" >&2; exit 1; }
+[ -x "$FILTER" ] && [ -f "$PPD" ] || { echo "run scripts/build-gutenprint.sh first" >&2; exit 1; }
+lpstat -p "$QUEUE" >/dev/null 2>&1 || { echo "CUPS queue not found: $QUEUE" >&2; exit 1; }
+
+TMP="$(mktemp -d)"; trap 'rm -rf "$TMP"' EXIT
+SRC="$FILE"
+case "$(echo "${FILE##*.}" | tr A-Z a-z)" in
+  docx|doc|pages|xlsx|pptx|key|numbers)
+    # Word/Pages are sandboxed and cannot be driven reliably from a script
+    # (they pop up "Grant File Access" dialogs), so export a PDF yourself first:
+    # File > Export As > PDF (or File > Print > PDF > Save as PDF).
+    echo "Export $FILE to PDF first, then print the PDF." >&2
+    exit 1
+    ;;
+esac
+
+export STP_DATA_PATH="$STAGE/usr/local/share/gutenprint/5.3/xml"
+export STP_MODULE_PATH="$STAGE/usr/local/lib/gutenprint/5.3/modules"
+export DYLD_LIBRARY_PATH="$STAGE/usr/local/lib"
+export PPD
+
+if [ "$DRY" = 1 ]; then
+  cupsfilter -p "$PPD" -m application/vnd.cups-raster -o "PageSize=$PAPER" "$SRC" 2>"$TMP/cf.err" \
+    | "$FILTER" 1 "$USER" g2010-print 1 "PageSize=$PAPER" 2>"$TMP/gp.err" >"$TMP/job.bjl"
+  echo "dry run ok: $(wc -c <"$TMP/job.bjl" | tr -d ' ') bytes of printer data, not sent" >&2
+  exit 0
+fi
+
+cupsfilter -p "$PPD" -m application/vnd.cups-raster -o "PageSize=$PAPER" "$SRC" 2>"$TMP/cf.err" \
+  | "$FILTER" 1 "$USER" g2010-print 1 "PageSize=$PAPER" 2>"$TMP/gp.err" >"$TMP/job.bjl"
+for _ in $(seq "$COPIES"); do
+  lp -d "$QUEUE" -o raw -t "$(basename "$FILE")" "$TMP/job.bjl"
+done
