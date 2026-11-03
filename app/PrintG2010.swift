@@ -103,6 +103,31 @@ enum Engine {
     }
 }
 
+enum PrinterStatus: Equatable {
+    case checking
+    case ready
+    case printing
+    case offline
+    case stopped
+    case missingQueue
+
+    var canAcceptJobs: Bool { self == .ready || self == .printing }
+}
+
+extension Engine {
+    /// Combines "is the G2010 on the USB bus" (printer on and cable fine) with the CUPS queue state.
+    static func printerStatus() async -> PrinterStatus {
+        let q = await run("/usr/bin/lpstat", ["-p", queue])
+        if q.status != 0 { return .missingQueue }
+        let usb = await run("/usr/sbin/ioreg", ["-p", "IOUSB", "-w0"])
+        if !usb.stdout.contains("G2010") { return .offline }
+        let first = q.stdout.split(separator: "\n").first.map(String.init) ?? ""
+        if first.contains("disabled") { return .stopped }
+        if first.contains("now printing") { return .printing }
+        return .ready
+    }
+}
+
 // MARK: - Model
 
 enum PrintState: Equatable {
@@ -119,6 +144,7 @@ final class PrintModel: ObservableObject {
     @Published var files: [URL] = []
     @Published var copiesText = "1"
     @Published var state: PrintState = .idle
+    @Published var printer: PrinterStatus = .checking
 
     /// nil unless the field holds a whole number from 1 to 99.
     var copies: Int? {
@@ -129,6 +155,17 @@ final class PrintModel: ObservableObject {
     var busy: Bool {
         if case .working = state { return true }
         return false
+    }
+
+    var canPrint: Bool {
+        !files.isEmpty && !busy && copies != nil && printer.canAcceptJobs
+    }
+
+    func monitorPrinter() async {
+        while !Task.isCancelled {
+            printer = await Engine.printerStatus()
+            try? await Task.sleep(nanoseconds: 2_000_000_000)
+        }
     }
 
     func replace(with urls: [URL]) {
@@ -238,6 +275,7 @@ struct ContentView: View {
                 Image(systemName: "printer.fill").font(.title2)
                 Text("Canon G2010").font(.title2.weight(.semibold))
                 Spacer()
+                printerBadge
             }
 
             fileArea
@@ -280,12 +318,30 @@ struct ContentView: View {
             .keyboardShortcut(.defaultAction)
             .buttonStyle(.borderedProminent)
             .controlSize(.large)
-            .disabled(model.files.isEmpty || model.busy || model.copies == nil)
+            .disabled(!model.canPrint)
 
             statusView
         }
         .padding(20)
+        .task { await model.monitorPrinter() }
         .frame(minWidth: 480, idealWidth: 520, minHeight: 460)
+    }
+
+    @ViewBuilder private var printerBadge: some View {
+        let (color, text): (Color, String) = {
+            switch model.printer {
+            case .checking: return (.gray, "กำลังตรวจสอบเครื่องพิมพ์…")
+            case .ready: return (.green, "เครื่องพิมพ์พร้อม")
+            case .printing: return (.orange, "เครื่องพิมพ์กำลังทำงาน")
+            case .offline: return (.red, "ไม่พบเครื่องพิมพ์ — เปิดเครื่องและตรวจสาย USB")
+            case .stopped: return (.red, "คิวพิมพ์ถูกหยุด — ตรวจกระดาษ/ไฟเตือนที่เครื่อง")
+            case .missingQueue: return (.red, "ไม่พบคิวพิมพ์ \(Engine.queue) ในระบบ")
+            }
+        }()
+        HStack(spacing: 6) {
+            Circle().fill(color).frame(width: 9, height: 9)
+            Text(text).font(.callout).foregroundStyle(.secondary).lineLimit(2)
+        }
     }
 
     @ViewBuilder private var fileArea: some View {
@@ -344,7 +400,9 @@ struct ContentView: View {
             switch model.state {
             case .idle:
                 Image(systemName: "circle.dashed").foregroundStyle(.secondary)
-                Text(model.files.isEmpty ? "ยังไม่ได้เลือกไฟล์" : "พร้อมพิมพ์ กดปุ่ม “พิมพ์”")
+                Text(model.files.isEmpty ? "ยังไม่ได้เลือกไฟล์"
+                     : model.printer.canAcceptJobs ? "พร้อมพิมพ์ กดปุ่ม “พิมพ์”"
+                     : "รอเครื่องพิมพ์พร้อมก่อนจึงจะพิมพ์ได้")
                     .foregroundStyle(.secondary)
             case .working(let msg):
                 ProgressView().controlSize(.small)
@@ -378,6 +436,10 @@ struct ContentView: View {
 final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         let args = CommandLine.arguments
+        if args.contains("--printer-status") {
+            Task { Swift.print("printer:", await Engine.printerStatus()); exit(0) }
+            return
+        }
         guard let i = args.firstIndex(of: "--selftest"), i + 1 < args.count else { return }
         // Headless check: print the given file through the same code path and report the end state.
         let model = PrintModel.shared
