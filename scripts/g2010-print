@@ -55,9 +55,9 @@ export STP_MODULE_PATH="$STAGE/usr/local/lib/gutenprint/5.3/modules"
 export DYLD_LIBRARY_PATH="$STAGE/usr/local/lib"
 export PPD
 
-# Progress lines starting with "@@" on stderr are meant for front ends:
+# Progress lines starting with "@@" on stderr are read by the app (app/PrintG2010.swift):
 #   @@total N   pages to send (pages x copies)     @@convert K   converting page K
-#   @@page A/N  A of N pages sent
+#   @@job ID    CUPS job created                   @@page A/N    A of N pages sent
 if [ ! -x "$TOOL" ] || [ "$ROOT/app/pdf-tool.swift" -nt "$TOOL" ]; then
   mkdir -p "$(dirname "$TOOL")"
   swiftc -O -o "$TOOL" "$ROOT/app/pdf-tool.swift" || { echo "cannot build pdf-tool (needs Xcode command line tools)" >&2; exit 1; }
@@ -92,6 +92,7 @@ for _ in $(seq "$COPIES"); do
     [ "$DRY" = 1 ] && continue
     out="$(lp -d "$QUEUE" -o raw -t "$(basename "$FILE") p.$k" "$TMP/p$k.bjl")"
     echo "$out"
+    echo "@@job $(echo "$out" | awk '/^request id is/{print $4}')" >&2
     SENT=$((SENT + 1))
     echo "@@page $SENT/$TOTAL" >&2
   done

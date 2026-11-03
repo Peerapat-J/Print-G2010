@@ -88,18 +88,11 @@ enum Engine {
         }
     }
 
-    /// "request id is Canon_G2010_series-45 (1 file(s))" -> "Canon_G2010_series-45"
-    static func jobIDs(in lpOutput: String) -> [String] {
-        lpOutput.split(separator: "\n").compactMap { line in
-            guard line.hasPrefix("request id is ") else { return nil }
-            return line.dropFirst("request id is ".count).split(separator: " ").first.map(String.init)
-        }
-    }
-
-    static func stillQueued(_ ids: [String]) async -> Bool {
+    /// How many of the given CUPS jobs are still waiting in the queue.
+    static func queuedCount(of ids: [String]) async -> Int {
         let r = await run("/usr/bin/lpstat", ["-o", queue])
-        let queued = r.stdout.split(separator: "\n").compactMap { $0.split(separator: " ").first.map(String.init) }
-        return ids.contains { queued.contains($0) }
+        let queued = Set(r.stdout.split(separator: "\n").compactMap { $0.split(separator: " ").first.map(String.init) })
+        return ids.filter { queued.contains($0) }.count
     }
 }
 
@@ -135,6 +128,26 @@ enum PrintState: Equatable {
     case working(String)
     case done(String)
     case failed(String)
+}
+
+/// Progress of one run of scripts/g2010-print, fed by its "@@" lines.
+@MainActor
+final class FileRun {
+    var result: ProcessResult?
+    var jobs: [String] = []
+    var total = 0
+    var sent = 0
+    var preparing = true
+
+    func handle(_ parts: [String]) {
+        switch parts.first {
+        case "total": total = Int(parts.dropFirst().first ?? "") ?? 0
+        case "job": if let id = parts.dropFirst().first, !id.isEmpty { jobs.append(id) }
+        case "page": sent = Int((parts.dropFirst().first ?? "").split(separator: "/").first ?? "") ?? sent
+        case "convert", "prepare": preparing = true
+        default: break
+        }
+    }
 }
 
 @MainActor
@@ -208,63 +221,76 @@ final class PrintModel: ObservableObject {
 
     func print() {
         guard !files.isEmpty, !busy, let copies = self.copies else { return }
-        let files = self.files
+        let todo = files
         state = .working("กำลังเริ่ม…")
-        Task { await self.run(files: files, copies: copies) }
+        let reverse = reverseOrder
+        Task { await self.runAll(todo, copies: copies, reverse: reverse) }
     }
 
-    private func set(_ s: PrintState) { state = s }
+    private func runAll(_ todo: [URL], copies: Int, reverse: Bool) async {
+        let began = Date()
+        for (i, file) in todo.enumerated() {
+            let prefix = todo.count > 1 ? "ไฟล์ \(i + 1)/\(todo.count) · " : ""
+            if !(await runOne(file, copies: copies, reverse: reverse, prefix: prefix)) { return }
+        }
+        let took = Int(Date().timeIntervalSince(began))
+        let summary = "\(todo.count) ไฟล์ × \(copies) ชุด"
+        state = .done(Engine.dryRun
+                      ? "ทดสอบแปลงไฟล์เรียบร้อย (\(summary)) ยังไม่ได้ส่งไปเครื่องพิมพ์"
+                      : "พิมพ์เสร็จแล้ว (\(summary)) ใช้เวลา \(took) วินาที")
+    }
 
-    private func run(files: [URL], copies: Int) async {
-        var jobs: [String] = []
-        for (i, file) in files.enumerated() {
-            let prefix = files.count > 1 ? "ไฟล์ \(i + 1)/\(files.count) · " : ""
-            let name = file.lastPathComponent
-            set(.working("\(prefix)กำลังแปลงไฟล์ \(name)"))
-            var args = ["-n", String(copies)]
-            if !reverseOrder { args.append("--no-reverse") }
-            if Engine.dryRun { args.append("--dry-run") }
-            args.append(file.path)
+    /// Runs the script and, while it is converting and sending pages, follows the CUPS queue
+    /// to count how many pages the printer has taken. Returns false after showing an error.
+    private func runOne(_ file: URL, copies: Int, reverse: Bool, prefix: String) async -> Bool {
+        let name = file.lastPathComponent
+        var args = ["-n", String(copies)]
+        if !reverse { args.append("--no-reverse") }
+        if Engine.dryRun { args.append("--dry-run") }
+        args.append(file.path)
+
+        let run = FileRun()
+        state = .working("\(prefix)กำลังเตรียมไฟล์ \(name)")
+        Task {
             let r = await Engine.run(Engine.script, args) { line in
                 guard line.hasPrefix("@@") else { return }
                 let parts = line.dropFirst(2).split(separator: " ").map(String.init)
-                Task { @MainActor in
-                    switch parts.first {
-                    case "convert": PrintModel.shared.set(.working("\(prefix)กำลังแปลงไฟล์ \(name)"))
-                    case "send":
-                        let n = parts.count > 1 ? parts[1] : ""
-                        PrintModel.shared.set(.working("\(prefix)กำลังส่ง \(name) ไปเครื่องพิมพ์ (ชุดที่ \(n))"))
-                    default: break
-                    }
-                }
+                Task { @MainActor in run.handle(parts) }
             }
-            if r.status != 0 {
-                let detail = r.stderr.split(separator: "\n")
-                    .filter { !$0.hasPrefix("@@") }.suffix(3).joined(separator: "\n")
-                set(.failed("พิมพ์ \(name) ไม่สำเร็จ\n\(detail)"))
-                return
-            }
-            jobs += Engine.jobIDs(in: r.stdout)
+            run.result = r
         }
 
-        let summary = "\(files.count) ไฟล์ × \(copies) ชุด"
-        if Engine.dryRun || jobs.isEmpty {
-            set(.done("ทดสอบแปลงไฟล์เรียบร้อย (\(summary)) ยังไม่ได้ส่งไปเครื่องพิมพ์"))
-            return
-        }
-        // Raw jobs stay in the CUPS queue until the USB backend has written them out,
-        // which is about when the printer finishes the last page.
         let start = Date()
-        while Date().timeIntervalSince(start) < 300 {
-            let elapsed = Int(Date().timeIntervalSince(start))
-            if !(await Engine.stillQueued(jobs)) {
-                set(.done("พิมพ์เสร็จแล้ว (\(summary)) รอเครื่องพิมพ์ \(elapsed) วินาที"))
-                return
+        var lastProgress = Date()
+        var lastPrinted = 0
+        while true {
+            let queued = run.jobs.isEmpty ? 0 : await Engine.queuedCount(of: run.jobs)
+            let printed = run.jobs.count - queued
+            if printed > lastPrinted { lastPrinted = printed; lastProgress = Date() }
+
+            if let r = run.result, r.status != 0 {
+                let detail = r.stderr.split(separator: "\n")
+                    .filter { !$0.hasPrefix("@@") }.suffix(3).joined(separator: "\n")
+                state = .failed("พิมพ์ \(name) ไม่สำเร็จ\n\(detail)")
+                return false
             }
-            set(.working("ส่งไปเครื่องพิมพ์แล้ว เครื่องกำลังพิมพ์… (\(elapsed) วินาที)"))
+            if run.result != nil && queued == 0 {
+                return true
+            }
+            if run.result != nil && Date().timeIntervalSince(lastProgress) > 180 {
+                state = .failed("\(name): งานค้างอยู่ในคิวนานเกินไป ตรวจที่เครื่องพิมพ์ว่าเปิดอยู่ มีกระดาษ และไม่มีไฟเตือน")
+                return false
+            }
+
+            let elapsed = Int(Date().timeIntervalSince(start))
+            if run.jobs.isEmpty {
+                state = .working("\(prefix)กำลังเตรียมไฟล์ \(name) (\(elapsed) วินาที)")
+            } else {
+                state = .working("\(prefix)\(name) — ส่งแล้ว \(run.sent)/\(run.total) หน้า · "
+                                 + "พิมพ์แล้ว \(printed)/\(run.total) หน้า (\(elapsed) วินาที)")
+            }
             try? await Task.sleep(nanoseconds: 1_000_000_000)
         }
-        set(.done("ส่งงานแล้ว แต่ยังค้างอยู่ในคิว ตรวจที่เครื่องพิมพ์ว่ามีกระดาษและเปิดเครื่องอยู่ (\(summary))"))
     }
 }
 
@@ -275,7 +301,7 @@ struct ContentView: View {
     @State private var targeted = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
+        VStack(alignment: .leading, spacing: 14) {
             HStack(spacing: 10) {
                 Image(systemName: "printer.fill").font(.title2)
                 Text("Canon G2010").font(.title2.weight(.semibold))
@@ -314,7 +340,6 @@ struct ContentView: View {
                     .font(.caption).foregroundStyle(.red)
                     .frame(maxWidth: .infinity, alignment: .trailing)
             }
-
             Toggle("พิมพ์จากหน้าสุดท้ายก่อน (กองกระดาษที่ออกมาเรียงหน้า 1 อยู่บนสุด)", isOn: $model.reverseOrder)
                 .toggleStyle(.checkbox)
                 .disabled(model.busy)
