@@ -50,15 +50,25 @@ export STP_MODULE_PATH="$STAGE/usr/local/lib/gutenprint/5.3/modules"
 export DYLD_LIBRARY_PATH="$STAGE/usr/local/lib"
 export PPD
 
+# Progress lines starting with "@@" on stderr are meant for front ends:
+#   @@convert   converting the file     @@send A/N   sending copy A of N
+convert() {
+  echo "@@convert" >&2
+  if ! cupsfilter -p "$PPD" -m application/vnd.cups-raster -o "PageSize=$PAPER" "$SRC" 2>"$TMP/cf.err" \
+      | "$FILTER" 1 "$USER" g2010-print 1 "PageSize=$PAPER" 2>"$TMP/gp.err" >"$TMP/job.bjl" \
+      || [ ! -s "$TMP/job.bjl" ]; then
+    echo "conversion failed: $(tail -n 2 "$TMP/cf.err" "$TMP/gp.err" 2>/dev/null | grep -v '^==>' | tr '\n' ' ')" >&2
+    exit 1
+  fi
+}
+
+convert
 if [ "$DRY" = 1 ]; then
-  cupsfilter -p "$PPD" -m application/vnd.cups-raster -o "PageSize=$PAPER" "$SRC" 2>"$TMP/cf.err" \
-    | "$FILTER" 1 "$USER" g2010-print 1 "PageSize=$PAPER" 2>"$TMP/gp.err" >"$TMP/job.bjl"
   echo "dry run ok: $(wc -c <"$TMP/job.bjl" | tr -d ' ') bytes of printer data, not sent" >&2
   exit 0
 fi
 
-cupsfilter -p "$PPD" -m application/vnd.cups-raster -o "PageSize=$PAPER" "$SRC" 2>"$TMP/cf.err" \
-  | "$FILTER" 1 "$USER" g2010-print 1 "PageSize=$PAPER" 2>"$TMP/gp.err" >"$TMP/job.bjl"
-for _ in $(seq "$COPIES"); do
+for i in $(seq "$COPIES"); do
+  echo "@@send $i/$COPIES" >&2
   lp -d "$QUEUE" -o raw -t "$(basename "$FILE")" "$TMP/job.bjl"
 done
