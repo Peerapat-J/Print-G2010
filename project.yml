@@ -53,6 +53,7 @@ targets:
         LSMinimumSystemVersion: $(MACOSX_DEPLOYMENT_TARGET)
         LSApplicationCategoryType: public.app-category.utilities
         NSHighResolutionCapable: true
+        NSHumanReadableCopyright: "© 2026 Peerapat Jardrit"
         NSPrincipalClass: NSApplication
         CFBundleDocumentTypes:
           - CFBundleTypeName: Printable files
