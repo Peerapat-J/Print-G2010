@@ -17,7 +17,7 @@
   <img src="https://img.shields.io/badge/Printing-Gutenprint-2f6fed" alt="Printing: Gutenprint">
 </p>
 
-<p align="center"><a href="#features">Features</a> · <a href="#download">Download</a> · <a href="#licenses">Licenses</a></p> · <a href="#requirement">Requirement</a></p>
+<p align="center"><a href="#features">Features</a> · <a href="#download">Download</a> · <a href="#licenses">Licenses</a> · <a href="#requirement">Requirement</a></p>
 
 <p align="center"><b>English</b> &nbsp;|&nbsp; <a href="README.th.md">ภาษาไทย</a></p>
 
