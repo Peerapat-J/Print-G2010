@@ -15,7 +15,7 @@
   <img src="https://img.shields.io/badge/Printing-Gutenprint-2f6fed" alt="Printing: Gutenprint">
 </p>
 
-<p align="center"><a href="#features">Features</a> · <a href="#download">Download</a> · <a href="#licenses">Licenses</a></p>
+<p align="center"><a href="#features">Features</a> · <a href="#download">Download</a> · <a href="#licenses">Licenses</a> · <a href="#requirement">Requirement</a></p>
 
 <p align="center"><a href="README.md">English</a> &nbsp;|&nbsp; <b>ภาษาไทย</b></p>
 
@@ -43,7 +43,7 @@
 
 ## Download
 
-<p align="center">
+<p align="Left">
   <a href="../../releases/latest"><img src="https://img.shields.io/badge/Download-Print%20G2010%20for%20macOS-2da66b?style=for-the-badge&logo=apple&logoColor=white" alt="Download Print G2010 for macOS"></a>
 </p>
 
@@ -65,6 +65,14 @@ open "build/Print G2010.app"
 ```
 
 </details>
+
+<a id="licenses"></a>
+
+## Requirement
+
+- Any Mac with Apple Sillicon.
+- macOS version 14+.
+- USB connection to G2010 printer.
 
 <a id="licenses"></a>
 
