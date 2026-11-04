@@ -47,7 +47,7 @@
 </p>
 
 โหลดไฟล์ `.dmg` ล่าสุดจาก [Releases](../../releases) เปิดแล้วลาก **Print G2010** ไปไว้ที่ Applications
-ถ้า macOS แจ้งว่าตรวจสอบแอปไม่ได้ ดูวิธีเปิดได้ใน Read Me ที่อยู่ในไฟล์ DMG
+แอปผ่านการ sign และ notarize จาก Apple แล้ว เปิดใช้ได้เหมือนแอป Mac ทั่วไป
 
 ต้องใช้ Mac ชิป Apple, macOS 14 ขึ้นไป, ต่อ G2010 ด้วยสาย USB และเพิ่มเครื่องพิมพ์ครั้งเดียวใน
 System Settings → Printers & Scanners

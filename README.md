@@ -49,8 +49,7 @@ with Apple silicon only since I don't have any Mac with Intel chip so, that's it
 </p>
 
 Download the latest `.dmg` from [Releases](../../releases), open it and drag **Print G2010** to
-Applications. If macOS says it can't verify the app, the Read Me inside the disk image shows how to
-open it.
+Applications. The app is signed and notarized by Apple, so it opens like any other Mac app.
 
 You'll need a Mac with Apple silicon on macOS 14 or later, and the G2010 connected by USB and added
 once in System Settings → Printers & Scanners.
