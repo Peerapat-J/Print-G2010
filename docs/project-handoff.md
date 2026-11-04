@@ -1,10 +1,10 @@
-# Canon PIXMA Driver — Project Handoff
+# Print G2010 — Project Handoff
 
 ## 1. Project Overview
 
-**Repository:** https://github.com/Peerapat-J/Canon-PIXMA-Driver
+**Repository:** https://github.com/Peerapat-J/Print-G2010
 
-**Project Name:** Canon PIXMA Driver
+**Project Name:** Print G2010
 
 **Initial Target Device:** Canon PIXMA G2010
 
