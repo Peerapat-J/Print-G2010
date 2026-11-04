@@ -44,7 +44,7 @@ Print G2010 is a free app that prints to the G2010 via USB connection.
 
 ## Download
 
-<p align="center">
+<p align="left">
   <a href="../../releases/latest"><img src="https://img.shields.io/badge/Download-Print%20G2010%20for%20macOS-2da66b?style=for-the-badge&logo=apple&logoColor=white" alt="Download Print G2010 for macOS"></a>
 </p>
 
