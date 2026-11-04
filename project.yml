@@ -1,16 +1,23 @@
 # Source of truth for the Xcode project. Regenerate PrintG2010.xcodeproj with `xcodegen`.
 name: PrintG2010
 options:
-  bundleIdPrefix: local.canon-pixma-driver
+  bundleIdPrefix: io.github.peerapat-j
   deploymentTarget:
     macOS: "14.0"
   createIntermediateGroups: true
+attributes:
+  LastUpgradeCheck: "2720"
 settings:
   base:
     SWIFT_VERSION: "5.0"
     MARKETING_VERSION: "1.0.0"
     CURRENT_PROJECT_VERSION: "1"
+    # The bundled Gutenprint is arm64 only, so do not let Xcode pick architectures itself.
     ARCHS: arm64
+    DEAD_CODE_STRIPPING: YES
+    # Xcode adds the get-task-allow debugging entitlement by default; notarization rejects it.
+    CODE_SIGN_INJECT_BASE_ENTITLEMENTS: NO
+    STRING_CATALOG_GENERATE_SYMBOLS: YES
     # Ad-hoc signing: no Apple Developer account is needed to build or run locally.
     CODE_SIGN_STYLE: Manual
     CODE_SIGN_IDENTITY: "-"
@@ -41,7 +48,7 @@ targets:
     settings:
       base:
         PRODUCT_NAME: Print G2010
-        PRODUCT_BUNDLE_IDENTIFIER: local.canon-pixma-driver.print-g2010
+        PRODUCT_BUNDLE_IDENTIFIER: io.github.peerapat-j.print-g2010
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
     info:
       path: app/Info.plist
