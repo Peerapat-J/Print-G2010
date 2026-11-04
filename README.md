@@ -24,9 +24,7 @@
 ---
 
 Canon doesn't make a driver for the **PIXMA G2010** on recent Macs, so this project aim to fix this problem for Mac people in my office.
-Canon G20x0 series are cheap and we have a lot of them in my office but it's not Mac support 😅
-
-Print G2010 is a free app that prints to the G2010 via USB connection.
+Canon G20x0 series are cheap and we have a lot of them in my office but it's not Mac support.
 
 <a id="features"></a>
 
