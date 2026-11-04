@@ -83,12 +83,12 @@ scripts/build-app.sh             # สร้าง build/Print G2010.app (ต้
 - มี 2 target: `pdf-tool` (เครื่องมือแยกหน้า PDF จาก `tools/pdf-tool`) และ `PrintG2010` (ตัวแอป จาก `app/`) phase "Bundle helpers" (`scripts/xcode-bundle-helpers.sh`) คัดลอกของที่แอปต้องใช้เข้าไปใน `.app` ต้องรัน `scripts/build-gutenprint.sh` ก่อนอย่างน้อยหนึ่งครั้ง
 - ค่าเริ่มต้นแอปเซ็นแบบ ad-hoc (ใช้ได้เฉพาะเครื่องนี้) ไม่ใช้ sandbox (ต้องเรียกโปรเซสอื่น) และรองรับเฉพาะ Mac ชิป Apple (arm64) macOS 14 ขึ้นไป เพราะ Gutenprint ที่แนบไปคอมไพล์เป็น arm64 อย่างเดียว
 - ไอคอนสร้างด้วย `swift scripts/make-icon.swift` (ผลอยู่ใน `app/Assets.xcassets`)
-- `scripts/make-dmg.sh` สร้าง `dist/PrintG2010-<เวอร์ชัน>.dmg` (แอป + ทางลัด Applications + Read Me สองภาษา) เพื่อส่งให้เพื่อนร่วมงาน
+- `scripts/make-dmg.sh` สร้าง `dist/PrintG2010-<เวอร์ชัน>.dmg` (หน้าต่างติดตั้งที่มีแอป ลูกศร และทางลัด Applications) เพื่อส่งให้เพื่อนร่วมงาน สร้างด้วย `dmgbuild` (ติดตั้งครั้งเดียวด้วย `pipx install dmgbuild`) หน้าต่างกำหนดใน `scripts/dmg/settings.py` และรูปพื้นหลังสร้างด้วย `swift scripts/make-dmg-background.swift`
 - **เซ็นและ notarize เพื่อแจกให้เครื่องอื่น (ทำครั้งเดียว):**
   1. สร้างใบรับรอง "Developer ID Application" ใน Xcode: Settings > Accounts > เลือกทีม > Manage Certificates > + > Developer ID Application (ต้องเป็น Account Holder) ตอนนี้ในเครื่องมีเฉพาะ "Apple Development" ซึ่งใช้แจกคนอื่นไม่ได้
   2. สร้าง app-specific password ที่ appleid.apple.com แล้วเก็บไว้ใน keychain: `xcrun notarytool store-credentials G2010-notary --apple-id <Apple ID> --team-id <Team ID>` (ระบบถามรหัสผ่านเอง)
   3. สร้างไฟล์แจก: `NOTARY_PROFILE=G2010-notary scripts/make-dmg.sh` สคริปต์จะเซ็นแอป (hardened runtime) ส่ง notarize ทั้งแอปและ DMG แล้ว staple ผลคือเครื่องอื่นเปิดได้โดยไม่มีคำเตือน
-  - ถ้ายังไม่มีใบรับรองหรือข้อมูล notarize สคริปต์ยังสร้าง DMG ให้ แต่เครื่องอื่นจะเจอคำเตือน "could not verify" ต้องทำตาม Read Me (Open Anyway หรือคำสั่ง `xattr`)
+  - ถ้ายังไม่มีใบรับรองหรือข้อมูล notarize สคริปต์ยังสร้าง DMG ให้ แต่เครื่องอื่นจะเจอคำเตือน "could not verify" ผู้ใช้ต้องเปิดแอปด้วยตัวเลือก Open Anyway ใน System Settings > Privacy & Security หรือรันคำสั่ง `xattr -dr com.apple.quarantine "/Applications/Print G2010.app"`
   - ตรวจผลลัพธ์: `spctl --assess --type execute -vv "build/Print G2010.app"` ควรได้ `accepted` และ `source=Notarized Developer ID`
 - `scripts/build-app.sh` เลือกใบรับรอง Developer ID ในเครื่องให้อัตโนมัติ หรือระบุเองด้วย `SIGN_IDENTITY="ชื่อใบรับรอง"` และบังคับเซ็นแบบ ad-hoc ด้วย `SIGN_IDENTITY=-`
 - ที่ยังไม่ได้ทดสอบ: ติดตั้งจาก DMG บนเครื่องอื่นจริง และการเพิ่มคิวพิมพ์บนเครื่องที่ไม่เคยลง driver ของ Canon
