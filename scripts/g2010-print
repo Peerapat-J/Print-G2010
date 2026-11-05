@@ -103,7 +103,10 @@ echo "@@total $TOTAL" >&2
 
 convert_page() {
   echo "@@convert $1" >&2
-  if ! cupsfilter -p "$PPD" -m application/vnd.cups-raster -o "PageSize=$PAPER" "$TMP/pages/p$1.pdf" 2>"$TMP/cf.err" \
+  # fit-to-page: without it a page whose size differs from the paper (a Letter PDF on A4, which Word
+  # makes by default) is drawn at 100% in the paper's bottom-left corner: a wide strip of blank paper
+  # on top, the right edge possibly cut off. With it the page is scaled to fit and centred.
+  if ! cupsfilter -p "$PPD" -m application/vnd.cups-raster -o "PageSize=$PAPER" -o fit-to-page "$TMP/pages/p$1.pdf" 2>"$TMP/cf.err" \
       | "$FILTER" 1 "$USER" g2010-print 1 "PageSize=$PAPER" 2>"$TMP/gp.err" >"$TMP/p$1.bjl" \
       || [ ! -s "$TMP/p$1.bjl" ]; then
     echo "conversion of page $1 failed: $(tail -n 2 "$TMP/cf.err" "$TMP/gp.err" 2>/dev/null | grep -v '^==>' | tr '\n' ' ')" >&2
