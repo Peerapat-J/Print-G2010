@@ -426,7 +426,19 @@ final class ScanModel: ObservableObject {
         if format != .pdf && pages.count > 1 {
             panel.message = "Each page is saved as its own file, numbered after this name."
         }
-        guard panel.runModal() == .OK, let url = panel.url else { return }
+        // A sheet slides down from the title bar of the app's window, instead of a free panel that
+        // opens wherever macOS last put it (often far from the app).
+        if let window = NSApp.keyWindow ?? NSApp.mainWindow {
+            panel.beginSheetModal(for: window) { response in
+                guard response == .OK, let url = panel.url else { return }
+                Task { @MainActor in self.write(to: url) }
+            }
+        } else if panel.runModal() == .OK, let url = panel.url {
+            write(to: url)
+        }
+    }
+
+    private func write(to url: URL) {
         let pages = pages, format = format
         Task {
             do {
