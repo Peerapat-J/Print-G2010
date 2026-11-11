@@ -174,10 +174,26 @@ enum FileStatus: Equatable {
     }
 }
 
+/// Colour or black-ink-only printing (g2010-print --color). Grayscale is faster and uses no colour ink.
+enum ColorMode: String, CaseIterable, Identifiable {
+    case color, gray
+    var id: String { rawValue }
+    var label: String { self == .color ? "Colour" : "Grayscale" }
+}
+
+/// Print resolution (g2010-print --dpi). 300 dpi needs fewer head passes, so it prints faster.
+enum Resolution: String, CaseIterable, Identifiable {
+    case dpi600 = "600", dpi300 = "300"
+    var id: String { rawValue }
+    var label: String { self == .dpi600 ? "600 dpi (best)" : "300 dpi (faster)" }
+}
+
 struct PrintJob {
     var url: URL
     var copies: Int
     var reverse: Bool
+    var color: ColorMode
+    var resolution: Resolution
     /// Empty for every page, otherwise what g2010-print --pages accepts.
     var pages: String
 }
@@ -296,6 +312,14 @@ final class PrintModel: ObservableObject {
         didSet { UserDefaults.standard.set(reverseOrder, forKey: "reverseOrder") }
     }
 
+    /// Quality settings, remembered between launches; each queued job keeps the values it was added with.
+    @Published var colorMode: ColorMode = ColorMode(rawValue: UserDefaults.standard.string(forKey: "colorMode") ?? "") ?? .color {
+        didSet { UserDefaults.standard.set(colorMode.rawValue, forKey: "colorMode") }
+    }
+    @Published var resolution: Resolution = Resolution(rawValue: UserDefaults.standard.string(forKey: "resolution") ?? "") ?? .dpi600 {
+        didSet { UserDefaults.standard.set(resolution.rawValue, forKey: "resolution") }
+    }
+
     var busy: Bool { running }
 
     func status(_ url: URL) -> FileStatus { fileStatus[url] ?? .waiting }
@@ -369,12 +393,14 @@ final class PrintModel: ObservableObject {
     /// Adds files to the print queue with their own settings; files already queued or printing are skipped.
     func enqueue(_ urls: [URL]) {
         let reverse = reverseOrder
+        let color = colorMode, resolution = resolution
         let new = urls.filter { !status($0).isActive }
         guard !new.isEmpty else { return }
         for url in new {
             let s = settings(for: url)
             fileStatus[url] = .queued
-            queue.append(PrintJob(url: url, copies: s.copies, reverse: reverse, pages: s.pagesArgument))
+            queue.append(PrintJob(url: url, copies: s.copies, reverse: reverse, color: color,
+                                  resolution: resolution, pages: s.pagesArgument))
         }
         if !running {
             running = true
@@ -417,6 +443,7 @@ final class PrintModel: ObservableObject {
         _ = await Engine.refreshQueue()
         var args = ["-q", Engine.queue, "-n", String(job.copies)]
         if !job.reverse { args.append("--no-reverse") }
+        args += ["--color", job.color.rawValue, "--dpi", job.resolution.rawValue]
         if !job.pages.isEmpty { args += ["--pages", job.pages] }
         if Engine.dryRun { args.append("--dry-run") }
         args.append(file.path)
@@ -692,6 +719,15 @@ struct ContentView: View {
                 }
                 Spacer()
             }
+            HStack {
+                Picker("Colour", selection: $model.colorMode) {
+                    ForEach(ColorMode.allCases) { Text($0.label).tag($0) }
+                }
+                Picker("Resolution", selection: $model.resolution) {
+                    ForEach(Resolution.allCases) { Text($0.label).tag($0) }
+                }
+            }
+            .help("Grayscale and 300 dpi print faster. Applies to files added to the queue from now on.")
             Toggle("Print last page first (stack comes out with page 1 on top)", isOn: $model.reverseOrder)
                 .toggleStyle(.checkbox)
                 .disabled(model.busy)

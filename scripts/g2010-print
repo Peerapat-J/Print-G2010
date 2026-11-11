@@ -5,6 +5,8 @@
 # The G2010 delivers pages face up, so pages are sent last-to-first by default
 # and the stack comes out in reading order (--no-reverse to disable).
 # --pages picks pages: "odd", "even", or a list such as "1,3,5-9" (default: all).
+# --color color|gray and --dpi 600|300 trade quality for speed: grayscale prints with the black
+#   ink only and 300 dpi needs fewer head passes (defaults: color, 600).
 #   Office documents must be exported to PDF first (see the error message).
 # The job is sent raw, so the queue's own (Canon) filters are bypassed.
 set -euo pipefail
@@ -19,9 +21,11 @@ COPIES=1
 DRY=0
 REVERSE=1
 PAGES=""
+COLOR="color"
+DPI="600"
 TOOL="$ROOT/build/bin/pdf-tool"
 
-usage() { echo "usage: $0 [-q queue] [-p PageSize] [-n copies] [--pages SPEC] [--no-reverse] [--dry-run] file" >&2; exit 2; }
+usage() { echo "usage: $0 [-q queue] [-p PageSize] [-n copies] [--pages SPEC] [--color color|gray] [--dpi 600|300] [--no-reverse] [--dry-run] file" >&2; exit 2; }
 while [ $# -gt 0 ]; do
   case "$1" in
     -q) QUEUE="$2"; shift 2;;
@@ -29,6 +33,8 @@ while [ $# -gt 0 ]; do
     -n) COPIES="$2"; shift 2;;
     --dry-run) DRY=1; shift;;
     --pages) PAGES="$2"; shift 2;;
+    --color) COLOR="$2"; shift 2;;
+    --dpi) DPI="$2"; shift 2;;
     --no-reverse) REVERSE=0; shift;;
     -h|--help) usage;;
     --) shift; break;;
@@ -38,6 +44,14 @@ while [ $# -gt 0 ]; do
 done
 [ $# -eq 1 ] || usage
 FILE="$1"
+case "$COLOR" in color|gray) ;; *) echo "invalid --color '$COLOR' (use color or gray)" >&2; exit 2;; esac
+case "$DPI" in 600|300) ;; *) echo "invalid --dpi '$DPI' (use 600 or 300)" >&2; exit 2;; esac
+# The raster step picks the colour model; the Gutenprint filter picks the resolution. 600 dpi is the
+# PPD's "Automatic" mode, so it is simply left unset.
+RASTER_OPTS=(-o "PageSize=$PAPER" -o fit-to-page)
+FILTER_OPTS="PageSize=$PAPER"
+[ "$COLOR" = gray ] && RASTER_OPTS+=(-o ColorModel=Gray)
+[ "$DPI" = 300 ] && FILTER_OPTS+=" Resolution=300dpi"
 [ -f "$FILE" ] || { echo "no such file: $FILE" >&2; exit 1; }
 [ -x "$FILTER" ] && [ -f "$PPD" ] || { echo "run scripts/build-gutenprint.sh first" >&2; exit 1; }
 lpstat -p "$QUEUE" >/dev/null 2>&1 || { echo "CUPS queue not found: $QUEUE" >&2; exit 1; }
@@ -106,8 +120,8 @@ convert_page() {
   # fit-to-page: without it a page whose size differs from the paper (a Letter PDF on A4, which Word
   # makes by default) is drawn at 100% in the paper's bottom-left corner: a wide strip of blank paper
   # on top, the right edge possibly cut off. With it the page is scaled to fit and centred.
-  if ! cupsfilter -p "$PPD" -m application/vnd.cups-raster -o "PageSize=$PAPER" -o fit-to-page "$TMP/pages/p$1.pdf" 2>"$TMP/cf.err" \
-      | "$FILTER" 1 "$USER" g2010-print 1 "PageSize=$PAPER" 2>"$TMP/gp.err" >"$TMP/p$1.bjl" \
+  if ! cupsfilter -p "$PPD" -m application/vnd.cups-raster "${RASTER_OPTS[@]}" "$TMP/pages/p$1.pdf" 2>"$TMP/cf.err" \
+      | "$FILTER" 1 "$USER" g2010-print 1 "$FILTER_OPTS" 2>"$TMP/gp.err" >"$TMP/p$1.bjl" \
       || [ ! -s "$TMP/p$1.bjl" ]; then
     echo "conversion of page $1 failed: $(tail -n 2 "$TMP/cf.err" "$TMP/gp.err" 2>/dev/null | grep -v '^==>' | tr '\n' ' ')" >&2
     exit 1
