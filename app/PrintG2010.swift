@@ -418,6 +418,11 @@ final class PrintModel: ObservableObject {
             if ScanModel.shared.scanning {
                 state = .working("Waiting for the scanner to finish…")
                 while ScanModel.shared.scanning { try? await Task.sleep(nanoseconds: 500_000_000) }
+                // Files can be taken out of the list while waiting, and that empties the queue.
+                if queue.isEmpty {
+                    if finished == 0 { state = .idle; running = false; return }
+                    break
+                }
             }
             let job = queue.removeFirst()
             if await runOne(job) {
