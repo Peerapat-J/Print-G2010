@@ -3,6 +3,7 @@ import SwiftUI
 /// The Scan window: settings on the left, the page on the glass in the middle, the pages scanned so far below.
 struct ScanView: View {
     @ObservedObject var model: ScanModel
+    @Environment(\.openWindow) private var openWindow
 
     var body: some View {
         VStack(spacing: 0) {
@@ -74,6 +75,7 @@ struct ScanView: View {
                     .resizable().scaledToFit()
                     .border(Color.secondary.opacity(0.35), width: 0.5)
                     .padding(12)
+                    .onTapGesture(count: 2) { openWindow(id: "scan-preview") }
             } else if !model.busy {
                 VStack(spacing: 6) {
                     Image(systemName: "scanner").font(.largeTitle).foregroundStyle(.secondary)
@@ -88,6 +90,18 @@ struct ScanView: View {
                 }
                 .padding(16)
                 .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 10))
+            }
+        }
+        .overlay(alignment: .topTrailing) {
+            if model.preview != nil {
+                Button { openWindow(id: "scan-preview") } label: {
+                    Image(systemName: "arrow.up.left.and.arrow.down.right")
+                        .padding(7)
+                        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 7))
+                }
+                .buttonStyle(.plain)
+                .padding(10)
+                .help("View the page larger (or double-click it)")
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)

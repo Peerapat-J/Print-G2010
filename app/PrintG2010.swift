@@ -940,5 +940,11 @@ struct PrintG2010App: App {
         }
         .defaultSize(width: 720, height: 540)
         .windowResizability(.contentMinSize)
+
+        // A large, zoomable view of the page selected in the Scan window.
+        Window("Scan Preview", id: "scan-preview") {
+            ScanViewer(model: ScanModel.shared)
+        }
+        .defaultSize(width: 820, height: 900)
     }
 }

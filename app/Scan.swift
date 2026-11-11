@@ -143,6 +143,13 @@ final class ScanProcess: @unchecked Sendable {
 // MARK: - Images
 
 enum ScanImage {
+    /// The scan at its full resolution, sized in pixels (used by the large preview).
+    static func fullSize(_ url: URL) -> NSImage? {
+        guard let src = CGImageSourceCreateWithURL(url as CFURL, nil),
+              let cg = CGImageSourceCreateImageAtIndex(src, 0, nil) else { return nil }
+        return NSImage(cgImage: cg, size: NSSize(width: cg.width, height: cg.height))
+    }
+
     /// A reduced copy for the screen; the full-size scan stays on disk.
     static func downsampled(_ url: URL, maxPixel: Int) -> NSImage? {
         guard let src = CGImageSourceCreateWithURL(url as CFURL, nil) else { return nil }
