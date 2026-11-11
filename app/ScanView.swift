@@ -122,6 +122,7 @@ struct ScanView: View {
                 if let page = model.selectedPage {
                     Button("Delete Page") { model.delete(page.id) }
                         .buttonStyle(.link)
+                        .disabled(model.saving)
                 }
             }
             ScrollView(.horizontal) {
@@ -157,7 +158,7 @@ struct ScanView: View {
                 Button("Move Left") { model.move(page.id, by: -1) }.disabled(number == 1)
                 Button("Move Right") { model.move(page.id, by: 1) }.disabled(number == model.pages.count)
                 Divider()
-                Button("Delete Page") { model.delete(page.id) }
+                Button("Delete Page") { model.delete(page.id) }.disabled(model.saving)
             }
     }
 
@@ -184,7 +185,7 @@ struct ScanView: View {
                 Text(saveLabel)
             }
             .controlSize(.large)
-            .disabled(model.pages.isEmpty || model.state == .scanning)
+            .disabled(model.pages.isEmpty || model.state == .scanning || model.saving)
         }
     }
 

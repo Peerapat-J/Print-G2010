@@ -270,6 +270,9 @@ final class ScanModel: ObservableObject {
     @Published private(set) var selectedID: UUID?
     @Published private(set) var preview: NSImage?
     @Published private(set) var state: ScanState = .idle
+    /// A save is writing the pages. The files it reads must stay until it is done, so pages cannot
+    /// be deleted meanwhile.
+    @Published private(set) var saving = false
     /// Files written by the last Save, for "Show in Finder".
     @Published private(set) var lastSaved: [URL] = []
 
@@ -386,7 +389,7 @@ final class ScanModel: ObservableObject {
     }
 
     func delete(_ id: UUID) {
-        guard let i = pages.firstIndex(where: { $0.id == id }) else { return }
+        guard !saving, let i = pages.firstIndex(where: { $0.id == id }) else { return }
         try? FileManager.default.removeItem(at: pages[i].url)
         pages.remove(at: i)
         if selectedID == id { select(pages.isEmpty ? nil : pages[min(i, pages.count - 1)].id) }
@@ -424,7 +427,7 @@ final class ScanModel: ObservableObject {
     }
 
     func save() {
-        guard !pages.isEmpty else { return }
+        guard !pages.isEmpty, !saving else { return }
         let panel = NSSavePanel()
         panel.title = "Save Scan"
         panel.nameFieldStringValue = defaultName + "." + format.fileExtension
@@ -447,7 +450,9 @@ final class ScanModel: ObservableObject {
 
     private func write(to url: URL) {
         let pages = pages, format = format
+        saving = true
         Task {
+            defer { saving = false }
             do {
                 let written = try await Task.detached { try ScanExport.write(pages, as: format, to: url) }.value
                 lastSaved = written
