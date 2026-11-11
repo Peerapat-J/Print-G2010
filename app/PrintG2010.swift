@@ -906,6 +906,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         let scan = ScanModel.shared
+        // Never cut a save off halfway: it could leave a truncated file, or half of a PDF the user
+        // chose to replace. Wait for it to finish, then go through quitting again.
+        if scan.saving {
+            Task { @MainActor in
+                while ScanModel.shared.saving { try? await Task.sleep(nanoseconds: 100_000_000) }
+                NSApp.terminate(nil)
+            }
+            return .terminateCancel
+        }
         guard scan.hasUnsavedPages else { return .terminateNow }
         let n = scan.pages.count
         let alert = NSAlert()
