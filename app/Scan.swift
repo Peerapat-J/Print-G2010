@@ -275,6 +275,9 @@ final class ScanModel: ObservableObject {
 
     private var task: Task<Void, Never>?
     private var process: ScanProcess?
+    /// A scan was requested and `run` has not reached "scanning" or finished yet. `state` does not
+    /// change until the printer check returns, so this is what stops a second click starting another scan.
+    private var starting = false
     private var folder: URL?
 
     /// The scanner is in use right now; printing waits for this to end (see PrintModel.drain).
@@ -286,12 +289,13 @@ final class ScanModel: ObservableObject {
     // MARK: Scanning
 
     func scanPage() {
-        guard !busy else { return }
+        guard !busy, !starting else { return }
         guard ScanEngine.isAvailable else {
             state = .failed("The scanner tools are missing from this copy of the app.")
             return
         }
         lastSaved = []
+        starting = true
         let mode = mode, dpi = resolution.rawValue, paper = paper
         task = Task { await self.run(mode: mode, dpi: dpi, paper: paper) }
     }
@@ -303,6 +307,7 @@ final class ScanModel: ObservableObject {
     }
 
     private func run(mode: ScanMode, dpi: Int, paper: ScanPaper) async {
+        defer { starting = false }
         // The printer and scanner share one USB cable, so wait until printing is over. Both checks
         // below and "state = .scanning" happen without a suspension in between, and the print queue
         // does the same in reverse, so the two cannot start at once.
@@ -317,6 +322,8 @@ final class ScanModel: ObservableObject {
             }
             try? await Task.sleep(nanoseconds: 1_000_000_000)
         }
+        // Cancel may have been pressed while the printer was being checked.
+        if Task.isCancelled { state = .idle; return }
         state = .scanning
 
         let out = scanFolder().appendingPathComponent("page-\(UUID().uuidString).tiff")
