@@ -292,7 +292,7 @@ final class ScanModel: ObservableObject {
     // MARK: Scanning
 
     func scanPage() {
-        guard !busy, !starting else { return }
+        guard !busy, !starting, !saving else { return }
         guard ScanEngine.isAvailable else {
             state = .failed("The scanner tools are missing from this copy of the app.")
             return
@@ -427,7 +427,8 @@ final class ScanModel: ObservableObject {
     }
 
     func save() {
-        guard !pages.isEmpty, !saving else { return }
+        // Saving and scanning do not overlap: a failed save would replace the "scanning" state.
+        guard !pages.isEmpty, !saving, !busy, !starting else { return }
         let panel = NSSavePanel()
         panel.title = "Save Scan"
         panel.nameFieldStringValue = defaultName + "." + format.fileExtension

@@ -178,6 +178,7 @@ struct ScanView: View {
                 .keyboardShortcut(.defaultAction)
                 .buttonStyle(.borderedProminent)
                 .controlSize(.large)
+                .disabled(model.saving)
             }
             Button {
                 model.save()
@@ -185,7 +186,7 @@ struct ScanView: View {
                 Text(saveLabel)
             }
             .controlSize(.large)
-            .disabled(model.pages.isEmpty || model.state == .scanning || model.saving)
+            .disabled(model.pages.isEmpty || model.busy || model.saving)
         }
     }
 
@@ -209,7 +210,10 @@ struct ScanView: View {
                 Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.red)
                 Text(message).textSelection(.enabled)
             case .idle:
-                if !model.lastSaved.isEmpty {
+                if model.saving {
+                    ProgressView().controlSize(.small)
+                    Text("Saving…")
+                } else if !model.lastSaved.isEmpty {
                     Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
                     Text("Saved \(model.lastSaved.count == 1 ? model.lastSaved[0].lastPathComponent : "\(model.lastSaved.count) files").")
                     Button("Show in Finder") { model.revealSaved() }.buttonStyle(.link)
