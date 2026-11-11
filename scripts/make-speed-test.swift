@@ -6,10 +6,11 @@
 import AppKit
 
 let outPath = CommandLine.arguments.count > 1 ? CommandLine.arguments[1] : "output/pdf/g2010-speed-test.pdf"
-try FileManager.default.createDirectory(atPath: (outPath as NSString).deletingLastPathComponent,
-                                        withIntermediateDirectories: true)
+// Resolve first: a bare "test.pdf" has no directory part to create.
+let outURL = URL(fileURLWithPath: outPath)
+try FileManager.default.createDirectory(at: outURL.deletingLastPathComponent(), withIntermediateDirectories: true)
 var box = CGRect(x: 0, y: 0, width: 595.28, height: 841.89) // A4 in points
-guard let ctx = CGContext(URL(fileURLWithPath: outPath) as CFURL, mediaBox: &box, nil) else { fatalError("cannot write \(outPath)") }
+guard let ctx = CGContext(outURL as CFURL, mediaBox: &box, nil) else { fatalError("cannot write \(outPath)") }
 
 func text(_ s: String, _ rect: CGRect, size: CGFloat, bold: Bool = false, color: NSColor = .black) {
     let para = NSMutableParagraphStyle(); para.lineSpacing = 2
