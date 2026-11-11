@@ -390,6 +390,14 @@ final class ScanModel: ObservableObject {
         pages.swapAt(i, i + offset)
     }
 
+    /// Drag and drop: moves a page to where `target` is, and the pages in between shift over by one.
+    func reorder(_ id: UUID, onto target: UUID) {
+        guard id != target,
+              let from = pages.firstIndex(where: { $0.id == id }),
+              let to = pages.firstIndex(where: { $0.id == target }) else { return }
+        pages.move(fromOffsets: IndexSet(integer: from), toOffset: to > from ? to + 1 : to)
+    }
+
     /// Removes every page and its temporary file.
     func discardAll() {
         pages = []

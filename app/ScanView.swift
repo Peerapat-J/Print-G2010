@@ -1,9 +1,12 @@
 import SwiftUI
+import UniformTypeIdentifiers
 
 /// The Scan page: settings on the left, the page on the glass in the middle, the pages scanned so far below.
 struct ScanView: View {
     @ObservedObject var model: ScanModel
     @Environment(\.openWindow) private var openWindow
+    /// The page being dragged in the strip, so the others can make room as it passes over them.
+    @State private var draggingPage: UUID?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -112,6 +115,9 @@ struct ScanView: View {
             HStack {
                 Text(model.pages.count == 1 ? "1 page" : "\(model.pages.count) pages")
                     .font(.callout).foregroundStyle(.secondary)
+                if model.pages.count > 1 {
+                    Text("· Drag to reorder").font(.callout).foregroundStyle(.secondary)
+                }
                 Spacer()
                 if let page = model.selectedPage {
                     Button("Delete Page") { model.delete(page.id) }
@@ -142,6 +148,11 @@ struct ScanView: View {
             }
             .overlay(RoundedRectangle(cornerRadius: 2).stroke(Color.accentColor, lineWidth: selected ? 2 : 0).padding(-2))
             .onTapGesture { model.select(page.id) }
+            .onDrag {
+                draggingPage = page.id
+                return NSItemProvider(object: page.id.uuidString as NSString)
+            }
+            .onDrop(of: [UTType.text], delegate: PageDropDelegate(target: page.id, model: model, dragging: $draggingPage))
             .contextMenu {
                 Button("Move Left") { model.move(page.id, by: -1) }.disabled(number == 1)
                 Button("Move Right") { model.move(page.id, by: 1) }.disabled(number == model.pages.count)
@@ -211,5 +222,24 @@ struct ScanView: View {
             }
         }
         .fixedSize(horizontal: false, vertical: true)
+    }
+}
+
+/// Lets a page be dragged along the strip: each page it passes over swaps places with it.
+struct PageDropDelegate: DropDelegate {
+    let target: UUID
+    let model: ScanModel
+    @Binding var dragging: UUID?
+
+    func dropEntered(info: DropInfo) {
+        guard let id = dragging else { return }
+        withAnimation(.easeInOut(duration: 0.15)) { model.reorder(id, onto: target) }
+    }
+
+    func dropUpdated(info: DropInfo) -> DropProposal? { DropProposal(operation: .move) }
+
+    func performDrop(info: DropInfo) -> Bool {
+        dragging = nil
+        return true
     }
 }
