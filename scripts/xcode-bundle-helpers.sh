@@ -1,6 +1,6 @@
 #!/bin/bash
 # Run by the "Bundle helpers" build phase of the Xcode project. Copies the print script,
-# the page-splitting tool, the natively built Gutenprint and its PPD into
+# the page-splitting tool, the natively built Gutenprint and its PPD, and the scanner tools into
 # Contents/Resources/g2010, laid out like this repo (scripts/, build/...) so that
 # scripts/g2010-print works unchanged from inside the app and the app is self-contained.
 set -euo pipefail
@@ -16,6 +16,12 @@ if [ ! -x "$FILTER" ] || [ ! -f "$PPD" ]; then
   exit 1
 fi
 
+SANE="$SRC/build/sane"
+if [ ! -x "$SANE/bin/scanimage" ]; then
+  echo "error: the scanner tools are not built yet. Run scripts/build-sane.sh first." >&2
+  exit 1
+fi
+
 rm -rf "$DEST"
 mkdir -p "$DEST/scripts" "$DEST/build/bin" "$DEST/build/ppd"
 B="$DEST/build/stage"
@@ -28,6 +34,9 @@ cp "$FILTER" "$B/usr/libexec/cups/filter/"
 cp -P "$STAGE"/usr/local/lib/libgutenprint*.dylib "$B/usr/local/lib/"
 cp "$STAGE"/usr/local/lib/gutenprint/5.3/modules/*.so "$B/usr/local/lib/gutenprint/5.3/modules/"
 cp -R "$STAGE/usr/local/share/gutenprint/5.3/xml" "$B/usr/local/share/gutenprint/5.3/"
+
+# The scanner: scanimage with the pixma backend built in, its libusb and the two config files.
+cp -R "$SANE" "$DEST/build/sane"
 
 # The filter was linked against /usr/local/lib/libgutenprint.9.dylib and relied on
 # DYLD_LIBRARY_PATH to find the bundled copy. Hardened-runtime binaries ignore that variable,

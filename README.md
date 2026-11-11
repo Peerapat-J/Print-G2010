@@ -35,6 +35,7 @@ Canon G20x0 series are cheap and we have a lot of them in my office but it's not
 - Prints the last page first, so the stack comes out with page 1 on top.
 - Shows what the printer is doing, and queues up several files.
 - Drag files up and down to change the order.
+- Scan from the glass in its own window: colour, gray or black and white, 75 to 600 dpi, several pages in one go. Save as one PDF or as PNG/JPEG pictures.
 
 **Note:** Word and Pages documents need to be exported to PDF first.
 
@@ -58,6 +59,7 @@ once in System Settings → Printers & Scanners.
 ```sh
 brew install pkgconf xcodegen
 scripts/build-gutenprint.sh     # once
+scripts/build-sane.sh           # once (the scanner part)
 scripts/build-app.sh
 open "build/Print G2010.app"
 ```
@@ -76,8 +78,9 @@ open "build/Print G2010.app"
 
 ## Licenses
 
-Printing is done by [Gutenprint](https://gutenprint.sourceforge.io/), free software under the GNU
-GPL, which the app includes. This project isn't affiliated with Canon.
+Printing is done by [Gutenprint](https://gutenprint.sourceforge.io/) and scanning by
+[SANE](http://www.sane-project.org/) with [libusb](https://libusb.info/), free software under the GNU
+(L)GPL, which the app includes. This project isn't affiliated with Canon.
 
 Good luck.
 

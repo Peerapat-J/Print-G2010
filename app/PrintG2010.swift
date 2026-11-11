@@ -413,6 +413,17 @@ final class PrintModel: ObservableObject {
         let began = Date()
         var finished = 0
         while !queue.isEmpty {
+            // The scanner shares the printer's USB cable, so wait for a scan in progress to end.
+            // The scan window does the same in reverse before it starts (see ScanModel.run).
+            if ScanModel.shared.scanning {
+                state = .working("Waiting for the scanner to finish…")
+                while ScanModel.shared.scanning { try? await Task.sleep(nanoseconds: 500_000_000) }
+                // Files can be taken out of the list while waiting, and that empties the queue.
+                if queue.isEmpty {
+                    if finished == 0 { state = .idle; running = false; return }
+                    break
+                }
+            }
             let job = queue.removeFirst()
             if await runOne(job) {
                 finished += 1
@@ -747,24 +758,14 @@ struct ContentView: View {
             statusView
         }
         .padding(20)
-        .task { await model.monitorPrinter() }
         .frame(minWidth: 500, idealWidth: 560, minHeight: 460)
     }
 
     @ViewBuilder private var printerBadge: some View {
-        let (color, text): (Color, String) = {
-            switch model.printer {
-            case .checking: return (.gray, "Checking printer…")
-            case .ready: return (.green, "Printer ready")
-            case .printing: return (.orange, "Printer busy")
-            case .offline: return (.red, "Printer not found — turn it on and check the USB cable")
-            case .stopped: return (.red, "Print queue stopped — check paper and warning lights")
-            case .missingQueue: return (.red, "No print queue for the G2010 — add the printer in System Settings")
-            }
-        }()
+        let badge = model.printer.badge
         HStack(spacing: 6) {
-            Circle().fill(color).frame(width: 9, height: 9)
-            Text(text).font(.callout).foregroundStyle(.secondary).lineLimit(2)
+            Circle().fill(badge.color).frame(width: 9, height: 9)
+            Text(badge.text).font(.callout).foregroundStyle(.secondary).lineLimit(2)
         }
     }
 
@@ -857,6 +858,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             Task { Swift.print("printer:", await Engine.printerStatus()); exit(0) }
             return
         }
+        if let i = args.firstIndex(of: "--scan-selftest"), i + 1 < args.count {
+            let folder = URL(fileURLWithPath: args[i + 1])
+            let mode = args.count > i + 2 ? ScanMode(rawValue: args[i + 2]) ?? .color : .color
+            let dpi = args.count > i + 3 ? Int(args[i + 3]) ?? 150 : 150
+            Task { await ScanModel.shared.selfTest(into: folder, mode: mode, dpi: dpi); exit(0) }
+            return
+        }
         guard let i = args.firstIndex(of: "--selftest"), i + 1 < args.count else { return }
         // Headless check: print the given files through the same code path and report the end state.
         // The first file starts at once, the others are queued one second later (like clicking
@@ -884,22 +892,85 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    /// Files opened with the app (Dock icon, "Open With") skip Home and go to the print list.
     func application(_ application: NSApplication, open urls: [URL]) {
         PrintModel.shared.add(urls)
+        Navigator.shared.page = .print
     }
 
-    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
+    /// Closing the window quits the app, unless that would lose scanned pages that were not saved:
+    /// then the app stays open (reopen it from the Dock) and Quit asks first.
+    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
+        !ScanModel.shared.hasUnsavedPages
+    }
+
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        let scan = ScanModel.shared
+        // Never cut a save off halfway: it could leave a truncated file, or half of a PDF the user
+        // chose to replace. Wait for it to finish, then go through quitting again.
+        if scan.saving {
+            Task { @MainActor in
+                while ScanModel.shared.saving { try? await Task.sleep(nanoseconds: 100_000_000) }
+                NSApp.terminate(nil)
+            }
+            return .terminateCancel
+        }
+        guard scan.hasUnsavedPages else { return .terminateNow }
+        let n = scan.pages.count
+        let alert = NSAlert()
+        alert.messageText = "Quit without saving your scan?"
+        alert.informativeText = n == 1
+            ? "The page you scanned has not been saved. It will be lost if you quit."
+            : "The \(n) pages you scanned have not been saved. They will be lost if you quit."
+        alert.addButton(withTitle: "Cancel")
+        alert.addButton(withTitle: "Quit Without Saving").hasDestructiveAction = true
+        // A sheet on the app's window, like the Save dialog; a plain alert only if there is no window.
+        if let window = NSApp.keyWindow ?? NSApp.mainWindow {
+            alert.beginSheetModal(for: window) { response in
+                NSApp.reply(toApplicationShouldTerminate: response == .alertSecondButtonReturn)
+            }
+            return .terminateLater
+        }
+        return alert.runModal() == .alertSecondButtonReturn ? .terminateNow : .terminateCancel
+    }
+
+    /// Stop a scan that is still running and delete the scanned pages kept in the temporary folder.
+    func applicationWillTerminate(_ notification: Notification) {
+        ScanModel.shared.cancel()
+        ScanModel.shared.discardAll()
+    }
 }
 
 @main
 struct PrintG2010App: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var delegate
 
+    @Environment(\.openWindow) private var openWindow
+
+    /// Switches the main window to a page, opening it again if it was closed.
+    private func show(_ page: AppPage) {
+        Navigator.shared.page = page
+        openWindow(id: "main")
+    }
+
     var body: some Scene {
+        // One window that opens on Home; Print and Scan are pages inside it (see Home.swift).
         Window("Print G2010", id: "main") {
-            ContentView(model: PrintModel.shared)
+            RootView()
         }
-        .defaultSize(width: 560, height: 560)
+        .defaultSize(width: 720, height: 560)
         .windowResizability(.contentMinSize)
+        .commands {
+            CommandGroup(after: .newItem) {
+                Button("Print…") { show(.print) }.keyboardShortcut("1")
+                Button("Scan…") { show(.scan) }.keyboardShortcut("2")
+            }
+        }
+
+        // A large, zoomable view of the page selected on the Scan page.
+        Window("Scan Preview", id: "scan-preview") {
+            ScanViewer(model: ScanModel.shared)
+        }
+        .defaultSize(width: 820, height: 900)
     }
 }

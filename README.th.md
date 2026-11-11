@@ -36,6 +36,7 @@
 - พิมพ์จากหน้าสุดท้ายก่อน กองกระดาษที่ออกมาจึงเรียงหน้า 1 อยู่บนสุด
 - บอกสถานะเครื่องพิมพ์ และต่อคิวหลายไฟล์ได้
 - ลากไฟล์ในหน้ารายการไฟล์เพื่อสลับลำดับการพิมพ์
+- สแกนจากกระจกในหน้าต่างของตัวเอง เลือกสี เทา หรือขาวดำ ความละเอียด 75 ถึง 600 dpi สแกนหลายหน้าต่อเนื่องได้ แล้วบันทึกเป็น PDF ไฟล์เดียว หรือเป็นรูป PNG/JPEG
 
 **หมายเหตุ:** ไฟล์ Word และ Pages แปลงเป็น PDF ก่อน
 
@@ -60,6 +61,7 @@ System Settings → Printers & Scanners
 ```sh
 brew install pkgconf xcodegen
 scripts/build-gutenprint.sh     # ครั้งแรกครั้งเดียว
+scripts/build-sane.sh           # ครั้งแรกครั้งเดียว (ส่วนสแกน)
 scripts/build-app.sh
 open "build/Print G2010.app"
 ```
@@ -78,7 +80,7 @@ open "build/Print G2010.app"
 
 ## Licenses
 
-โปรเจกต์นี้ใช้ [Gutenprint](https://gutenprint.sourceforge.io/) เป็นตัวสั่งพิมพ์ ซึ่งเป็น open source ภายใต้ license GNU GPL และแอปแนบมาด้วย
+โปรเจกต์นี้ใช้ [Gutenprint](https://gutenprint.sourceforge.io/) เป็นตัวสั่งพิมพ์ และ [SANE](http://www.sane-project.org/) กับ [libusb](https://libusb.info/) เป็นตัวสแกน ซึ่งเป็น open source ภายใต้ license GNU GPL/LGPL และแอปแนบมาด้วย
 โปรเจกต์นี้เน้นแก้ปัญหาในที่ทำงานเท่านั้น แจกฟรี ไม่มีค่าใช้จ่ายใดๆ ทั้งนั้น
 
 © 2026 Peerapat Jardrit
