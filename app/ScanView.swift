@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// The Scan window: settings on the left, the page on the glass in the middle, the pages scanned so far below.
+/// The Scan page: settings on the left, the page on the glass in the middle, the pages scanned so far below.
 struct ScanView: View {
     @ObservedObject var model: ScanModel
     @Environment(\.openWindow) private var openWindow

@@ -1,11 +1,11 @@
 import SwiftUI
 
 /// A large, zoomable view of the selected scanned page, in its own window so it can be resized or
-/// kept open while pages are scanned. It follows the selection in the Scan window.
+/// kept open while pages are scanned. It follows the selection on the Scan page.
 struct ScanViewer: View {
     @ObservedObject var model: ScanModel
     @Environment(\.displayScale) private var displayScale
-    /// The scan at its full resolution (the Scan window only keeps a reduced copy).
+    /// The scan at its full resolution (the Scan page only keeps a reduced copy).
     @State private var full: NSImage?
     /// Screen pixels per image pixel: 1 is "100%", every dot of the scan on one dot of the screen.
     /// nil fits the whole page in the window.

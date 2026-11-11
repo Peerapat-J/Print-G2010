@@ -705,7 +705,6 @@ struct FileRow: View {
 struct ContentView: View {
     @ObservedObject var model: PrintModel
     @State private var targeted = false
-    @Environment(\.openWindow) private var openWindow
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -725,10 +724,6 @@ struct ContentView: View {
                         .disabled(model.busy)
                 }
                 Spacer()
-                Button { openWindow(id: "scan") } label: {
-                    Label("Scan…", systemImage: "scanner")
-                }
-                .help("Open the scan window (⌘2)")
             }
             HStack {
                 Picker("Colour", selection: $model.colorMode) {
@@ -758,24 +753,14 @@ struct ContentView: View {
             statusView
         }
         .padding(20)
-        .task { await model.monitorPrinter() }
         .frame(minWidth: 500, idealWidth: 560, minHeight: 460)
     }
 
     @ViewBuilder private var printerBadge: some View {
-        let (color, text): (Color, String) = {
-            switch model.printer {
-            case .checking: return (.gray, "Checking printer…")
-            case .ready: return (.green, "Printer ready")
-            case .printing: return (.orange, "Printer busy")
-            case .offline: return (.red, "Printer not found — turn it on and check the USB cable")
-            case .stopped: return (.red, "Print queue stopped — check paper and warning lights")
-            case .missingQueue: return (.red, "No print queue for the G2010 — add the printer in System Settings")
-            }
-        }()
+        let badge = model.printer.badge
         HStack(spacing: 6) {
-            Circle().fill(color).frame(width: 9, height: 9)
-            Text(text).font(.callout).foregroundStyle(.secondary).lineLimit(2)
+            Circle().fill(badge.color).frame(width: 9, height: 9)
+            Text(badge.text).font(.callout).foregroundStyle(.secondary).lineLimit(2)
         }
     }
 
@@ -902,8 +887,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    /// Files opened with the app (Dock icon, "Open With") skip Home and go to the print list.
     func application(_ application: NSApplication, open urls: [URL]) {
         PrintModel.shared.add(urls)
+        Navigator.shared.page = .print
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
@@ -921,27 +908,27 @@ struct PrintG2010App: App {
 
     @Environment(\.openWindow) private var openWindow
 
+    /// Switches the main window to a page, opening it again if it was closed.
+    private func show(_ page: AppPage) {
+        Navigator.shared.page = page
+        openWindow(id: "main")
+    }
+
     var body: some Scene {
+        // One window that opens on Home; Print and Scan are pages inside it (see Home.swift).
         Window("Print G2010", id: "main") {
-            ContentView(model: PrintModel.shared)
+            RootView()
         }
-        .defaultSize(width: 560, height: 560)
+        .defaultSize(width: 720, height: 560)
         .windowResizability(.contentMinSize)
         .commands {
             CommandGroup(after: .newItem) {
-                Button("Print…") { openWindow(id: "main") }.keyboardShortcut("1")
-                Button("Scan…") { openWindow(id: "scan") }.keyboardShortcut("2")
+                Button("Print…") { show(.print) }.keyboardShortcut("1")
+                Button("Scan…") { show(.scan) }.keyboardShortcut("2")
             }
         }
 
-        // A single window: there is one scanner, so a second scan window would have no use.
-        Window("Scan G2010", id: "scan") {
-            ScanView(model: ScanModel.shared)
-        }
-        .defaultSize(width: 720, height: 540)
-        .windowResizability(.contentMinSize)
-
-        // A large, zoomable view of the page selected in the Scan window.
+        // A large, zoomable view of the page selected on the Scan page.
         Window("Scan Preview", id: "scan-preview") {
             ScanViewer(model: ScanModel.shared)
         }
