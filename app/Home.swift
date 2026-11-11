@@ -5,14 +5,25 @@ import UniformTypeIdentifiers
 
 /// The three pages of the main window. The window opens on Home; Print and Scan are pages inside it,
 /// not windows of their own, so the two jobs are never on screen side by side.
-enum AppPage {
+enum AppPage: String {
     case home, print, scan
+
+    /// The size the window takes (the area below the title bar, in points) when this page opens: Home is a small
+    /// launcher, Print and Scan need room for their lists and previews. The user can still resize.
+    var contentSize: CGSize {
+        switch self {
+        case .home: return CGSize(width: 620, height: 312)
+        case .print: return CGSize(width: 560, height: 600)
+        case .scan: return CGSize(width: 720, height: 580)
+        }
+    }
 }
 
 @MainActor
 final class Navigator: ObservableObject {
     static let shared = Navigator()
-    @Published var page: AppPage = .home
+    /// G2010_PAGE=print or scan opens the app on that page (for checking a page without clicking).
+    @Published var page: AppPage = AppPage(rawValue: ProcessInfo.processInfo.environment["G2010_PAGE"] ?? "") ?? .home
 }
 
 extension PrinterStatus {
@@ -55,6 +66,48 @@ struct RootView: View {
         }
         // The printer state is shown on Home and on the Print page, so poll it for the whole window.
         .task { await PrintModel.shared.monitorPrinter() }
+        // The window changes size to suit the page that is showing.
+        .background(WindowSizer(page: nav.page))
+    }
+}
+
+/// Resizes the window that holds it whenever the page changes, keeping its top-left corner in place.
+struct WindowSizer: NSViewRepresentable {
+    let page: AppPage
+
+    final class Coordinator { var last: AppPage? }
+    func makeCoordinator() -> Coordinator { Coordinator() }
+    func makeNSView(context: Context) -> NSView { NSView() }
+
+    func updateNSView(_ view: NSView, context: Context) {
+        guard context.coordinator.last != page else { return }
+        let first = context.coordinator.last == nil
+        context.coordinator.last = page
+        let size = page.contentSize
+        // Wait a moment so the window has taken the new page's minimum size first; otherwise the
+        // old page's minimum would stop it from shrinking.
+        DispatchQueue.main.asyncAfter(deadline: .now() + (first ? 0.05 : 0.03)) {
+            view.window?.setContentSizeKeepingTopLeft(size, animate: !first)
+        }
+    }
+}
+
+extension NSWindow {
+    /// Sizes the window so the area below the title bar is `size`. The title bar and any other
+    /// space the window adds around its content (`contentLayoutRect`) come on top of that.
+    func setContentSizeKeepingTopLeft(_ size: CGSize, animate: Bool) {
+        let chrome = CGSize(width: frame.width - contentLayoutRect.width,
+                            height: frame.height - contentLayoutRect.height)
+        var next = frame
+        next.size = CGSize(width: size.width + chrome.width, height: size.height + chrome.height)
+        next.origin.y = frame.maxY - next.height
+        if let visible = (screen ?? NSScreen.main)?.visibleFrame {
+            next.size.width = min(next.width, visible.width)
+            next.size.height = min(next.height, visible.height)
+            next.origin.x = min(max(next.minX, visible.minX), visible.maxX - next.width)
+            next.origin.y = min(max(next.minY, visible.minY), visible.maxY - next.height)
+        }
+        setFrame(next, display: true, animate: animate)
     }
 }
 
@@ -87,7 +140,7 @@ struct HomeView: View {
 
     var body: some View {
         HStack(spacing: 0) {
-            VStack(spacing: 24) {
+            VStack(spacing: 20) {
                 Spacer(minLength: 0)
                 HStack(spacing: 24) {
                     HomeTile(title: "Print", symbol: "printer.fill",
@@ -101,13 +154,13 @@ struct HomeView: View {
                 Spacer(minLength: 0)
             }
             .padding(24)
-            .frame(maxWidth: .infinity)
+            .frame(minWidth: 392, maxWidth: .infinity)
 
             Divider()
             statusPanel
-                .frame(width: 210)
+                .frame(width: 200)
         }
-        .frame(minWidth: 600, minHeight: 440)
+        .frame(minWidth: 612, minHeight: 312)
         .onDrop(of: [UTType.fileURL], isTargeted: $targeted) { providers in
             for p in providers {
                 _ = p.loadObject(ofClass: URL.self) { url, _ in
@@ -170,15 +223,24 @@ struct HomeTile: View {
     var body: some View {
         Button(action: action) {
             VStack(spacing: 10) {
-                Image(systemName: symbol).font(.system(size: 52)).foregroundStyle(Color.accentColor)
+                Image(systemName: symbol)
+                    .font(.system(size: 52))
+                    .foregroundStyle(Color.accentColor)
+                    .frame(height: 64)
                 Text(title).font(.title2)
-                Text(caption ?? " ").font(.caption).foregroundStyle(.orange)
             }
-            .frame(width: 170, height: 170)
+            .frame(width: 160, height: 160)
+            // The status ("Printing…") sits on the bottom edge so the icon and name stay centred.
+            .overlay(alignment: .bottom) {
+                if let caption {
+                    Text(caption).font(.caption).foregroundStyle(.orange).padding(.bottom, 10)
+                }
+            }
             .background(Color.secondary.opacity(hovering ? 0.16 : 0.08), in: RoundedRectangle(cornerRadius: 12))
             .contentShape(RoundedRectangle(cornerRadius: 12))
         }
         .buttonStyle(.plain)
+        .focusEffectDisabled()
         .onHover { hovering = $0 }
     }
 }
