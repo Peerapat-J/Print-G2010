@@ -1,5 +1,5 @@
 // Print G2010: a one-window front end for scripts/g2010-print.
-// Pick or drop files, set the number of copies, press print, watch the status.
+// Pick or drop files, set copies and pages for each file, press print, watch the status.
 // Built by the Xcode project (see project.yml); the helpers it needs are bundled in the app.
 
 import SwiftUI
@@ -174,10 +174,26 @@ enum FileStatus: Equatable {
     }
 }
 
+/// Colour or black-ink-only printing (g2010-print --color). Grayscale is faster and uses no colour ink.
+enum ColorMode: String, CaseIterable, Identifiable {
+    case color, gray
+    var id: String { rawValue }
+    var label: String { self == .color ? "Colour" : "Grayscale" }
+}
+
+/// Print resolution (g2010-print --dpi). 300 dpi needs fewer head passes, so it prints faster.
+enum Resolution: String, CaseIterable, Identifiable {
+    case dpi600 = "600", dpi300 = "300"
+    var id: String { rawValue }
+    var label: String { self == .dpi600 ? "600 dpi (best)" : "300 dpi (faster)" }
+}
+
 struct PrintJob {
     var url: URL
     var copies: Int
     var reverse: Bool
+    var color: ColorMode
+    var resolution: Resolution
     /// Empty for every page, otherwise what g2010-print --pages accepts.
     var pages: String
 }
@@ -234,6 +250,51 @@ func pageSpecError(_ spec: String, pageCount: Int?) -> String? {
     return nil
 }
 
+/// What one file is printed with: how many copies and which pages. Kept per file, and kept after
+/// the file has been printed so it can be printed again the same way.
+struct FileSettings: Equatable {
+    var copies = 1
+    var pageMode = PageMode.all
+    var pageSpec = ""
+    /// Known for PDFs only.
+    var pageCount: Int?
+
+    var pagesError: String? {
+        switch pageMode {
+        case .custom: return pageSpecError(pageSpec, pageCount: pageCount)
+        case .even: return (pageCount ?? 2) < 2 ? "This document has no even pages" : nil
+        default: return nil
+        }
+    }
+
+    /// What g2010-print --pages accepts; empty for every page.
+    var pagesArgument: String {
+        switch pageMode {
+        case .all: return ""
+        case .odd: return "odd"
+        case .even: return "even"
+        case .custom: return pageSpec.filter { !$0.isWhitespace }
+        }
+    }
+
+    var isDefault: Bool { copies == 1 && pageMode == .all }
+
+    /// Shown in the badge on the file's row, e.g. "2 copies · Pages 3-5".
+    var summary: String {
+        let copiesLabel = copies == 1 ? "1 copy" : "\(copies) copies"
+        let pagesLabel: String
+        switch pageMode {
+        case .all: pagesLabel = "All pages"
+        case .odd: pagesLabel = "Odd pages"
+        case .even: pagesLabel = "Even pages"
+        case .custom:
+            let spec = pagesArgument.replacingOccurrences(of: ",", with: ", ")
+            pagesLabel = (spec.contains(",") || spec.contains("-") ? "Pages " : "Page ") + spec
+        }
+        return "\(copiesLabel) · \(pagesLabel)"
+    }
+}
+
 @MainActor
 final class PrintModel: ObservableObject {
     static let shared = PrintModel()
@@ -241,7 +302,7 @@ final class PrintModel: ObservableObject {
     @Published var files: [URL] = []
     @Published var selected: Set<URL> = []
     @Published var fileStatus: [URL: FileStatus] = [:]
-    @Published var copiesText = "1"
+    @Published var settings: [URL: FileSettings] = [:]
     @Published var state: PrintState = .idle
     @Published var printer: PrinterStatus = .checking
     @Published private(set) var queue: [PrintJob] = []
@@ -251,10 +312,18 @@ final class PrintModel: ObservableObject {
         didSet { UserDefaults.standard.set(reverseOrder, forKey: "reverseOrder") }
     }
 
-    var copies: Int? { parseCopies(copiesText) }
+    /// Quality settings, remembered between launches; each queued job keeps the values it was added with.
+    @Published var colorMode: ColorMode = ColorMode(rawValue: UserDefaults.standard.string(forKey: "colorMode") ?? "") ?? .color {
+        didSet { UserDefaults.standard.set(colorMode.rawValue, forKey: "colorMode") }
+    }
+    @Published var resolution: Resolution = Resolution(rawValue: UserDefaults.standard.string(forKey: "resolution") ?? "") ?? .dpi600 {
+        didSet { UserDefaults.standard.set(resolution.rawValue, forKey: "resolution") }
+    }
+
     var busy: Bool { running }
 
     func status(_ url: URL) -> FileStatus { fileStatus[url] ?? .waiting }
+    func settings(for url: URL) -> FileSettings { settings[url] ?? FileSettings() }
 
     /// Ticked files that are not already queued or printing, in list order.
     var selectedFiles: [URL] {
@@ -276,6 +345,8 @@ final class PrintModel: ObservableObject {
             } else if !files.contains(url) {
                 files.append(url)
                 selected.insert(url)
+                let pageCount = url.pathExtension.lowercased() == "pdf" ? PDFDocument(url: url)?.pageCount : nil
+                settings[url] = FileSettings(pageCount: pageCount)
             }
         }
         if rejected.isEmpty {
@@ -302,6 +373,7 @@ final class PrintModel: ObservableObject {
         files.removeAll { $0 == url }
         selected.remove(url)
         fileStatus[url] = nil
+        settings[url] = nil
     }
 
     func clear() {
@@ -309,23 +381,26 @@ final class PrintModel: ObservableObject {
         files = []
         selected = []
         fileStatus = [:]
+        settings = [:]
         state = .idle
     }
 
-    /// Big button: every ticked file, top to bottom, with the copies field.
+    /// The print button: every ticked file, top to bottom, each with its own copies and pages.
     func printSelected() {
-        guard let copies = self.copies else { return }
-        enqueue(selectedFiles, copies: copies)
+        enqueue(selectedFiles)
     }
 
-    /// Adds files to the print queue; files already queued or printing are skipped.
-    func enqueue(_ urls: [URL], copies: Int, pages: String = "") {
+    /// Adds files to the print queue with their own settings; files already queued or printing are skipped.
+    func enqueue(_ urls: [URL]) {
         let reverse = reverseOrder
+        let color = colorMode, resolution = resolution
         let new = urls.filter { !status($0).isActive }
         guard !new.isEmpty else { return }
         for url in new {
+            let s = settings(for: url)
             fileStatus[url] = .queued
-            queue.append(PrintJob(url: url, copies: copies, reverse: reverse, pages: pages))
+            queue.append(PrintJob(url: url, copies: s.copies, reverse: reverse, color: color,
+                                  resolution: resolution, pages: s.pagesArgument))
         }
         if !running {
             running = true
@@ -368,6 +443,7 @@ final class PrintModel: ObservableObject {
         _ = await Engine.refreshQueue()
         var args = ["-q", Engine.queue, "-n", String(job.copies)]
         if !job.reverse { args.append("--no-reverse") }
+        args += ["--color", job.color.rawValue, "--dpi", job.resolution.rawValue]
         if !job.pages.isEmpty { args += ["--pages", job.pages] }
         if Engine.dryRun { args.append("--dry-run") }
         args.append(file.path)
@@ -473,15 +549,14 @@ extension View {
 struct FileRow: View {
     @ObservedObject var model: PrintModel
     let url: URL
-    @State private var askCopies = false
+    @State private var editing = false
+    @State private var draft = FileSettings()
     @State private var rowCopies = "1"
-    @State private var pageMode = PageMode.all
-    @State private var pageSpec = ""
-    @State private var pageCount: Int?
     @State private var hovering = false
 
     var body: some View {
         let status = model.status(url)
+        let settings = model.settings(for: url)
         HStack(spacing: 10) {
             Toggle("", isOn: Binding(get: { model.selected.contains(url) },
                                      set: { model.setSelected(url, $0) }))
@@ -489,68 +564,69 @@ struct FileRow: View {
                 .labelsHidden()
                 .disabled(status.isActive)
                 .help("Tick the files to print with “Print Selected”")
-            // The part of the row that can be grabbed to reorder; it shows an open hand.
-            HStack(spacing: 10) {
-                Image(nsImage: NSWorkspace.shared.icon(forFile: url.path))
-                    .resizable().frame(width: 24, height: 24)
-                VStack(alignment: .leading, spacing: 1) {
-                    Text(url.lastPathComponent).lineLimit(1).truncationMode(.middle)
+            Image(nsImage: NSWorkspace.shared.icon(forFile: url.path))
+                .resizable().frame(width: 24, height: 24)
+                .handCursor(model.files.count > 1)
+            VStack(alignment: .leading, spacing: 3) {
+                // First line: the name, which can be grabbed to reorder (open hand), and the remove button.
+                HStack(spacing: 10) {
+                    HStack(spacing: 0) {
+                        Text(url.lastPathComponent).lineLimit(1).truncationMode(.middle)
+                        Spacer(minLength: 4)
+                    }
+                    .contentShape(Rectangle())
+                    .handCursor(model.files.count > 1)
+                    Button { model.remove(url) } label: {
+                        Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary)
+                    }
+                    .buttonStyle(.plain)
+                    .disabled({ if case .working = status { return true } else { return false } }())
+                    .help("Remove from list")
+                }
+                // Second line: what will be printed, how it is going, and where the file is.
+                HStack(spacing: 6) {
+                    settingsBadge(settings, locked: status.isActive)
+                    statusBadge(status)
                     Text(url.deletingLastPathComponent().path)
                         .font(.caption).foregroundStyle(.secondary)
                         .lineLimit(1).truncationMode(.head)
+                    Spacer(minLength: 0)
                 }
-                Spacer(minLength: 4)
             }
-            .contentShape(Rectangle())
-            .handCursor(model.files.count > 1)
-            badge(status)
-            Button { openPopover() } label: {
-                Image(systemName: "printer.fill").foregroundStyle(Color.accentColor)
-            }
-            .buttonStyle(.plain)
-            .disabled(status.isActive || !model.printer.canAcceptJobs)
-            .help("Print this file")
-            .popover(isPresented: $askCopies, arrowEdge: .bottom) { copiesPopover }
-            Button { model.remove(url) } label: {
-                Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary)
-            }
-            .buttonStyle(.plain)
-            .disabled({ if case .working = status { return true } else { return false } }())
-            .help("Remove from list")
         }
         .padding(.horizontal, 6)
-        .padding(.vertical, 3)
+        .padding(.vertical, 4)
         .background(RoundedRectangle(cornerRadius: 6).fill(Color.primary.opacity(hovering ? 0.1 : 0)))
         .animation(.easeOut(duration: 0.12), value: hovering)
         .onHover { hovering = $0 }
     }
 
-    private func openPopover() {
-        rowCopies = "1"
-        pageMode = .all
-        pageSpec = ""
-        pageCount = url.pathExtension.lowercased() == "pdf" ? PDFDocument(url: url)?.pageCount : nil
-        askCopies = true
+    private func openEditor() {
+        draft = model.settings(for: url)
+        rowCopies = String(draft.copies)
+        editing = true
     }
 
-    private var pagesError: String? {
-        switch pageMode {
-        case .custom: return pageSpecError(pageSpec, pageCount: pageCount)
-        case .even: return (pageCount ?? 2) < 2 ? "This document has no even pages" : nil
-        default: return nil
+    /// Copies and pages for this file. A button that opens the editor; changed values show in the accent colour.
+    private func settingsBadge(_ s: FileSettings, locked: Bool) -> some View {
+        Button { openEditor() } label: {
+            HStack(spacing: 4) {
+                Text(s.summary).lineLimit(1)
+                if !locked { Image(systemName: "chevron.down").font(.system(size: 8, weight: .bold)) }
+            }
+            .font(.caption.weight(.medium))
+            .foregroundStyle(s.isDefault ? Color.secondary : Color.accentColor)
+            .padding(.horizontal, 8).padding(.vertical, 3)
+            .background((s.isDefault ? Color.secondary : Color.accentColor).opacity(0.15), in: Capsule())
         }
+        .buttonStyle(.plain)
+        .disabled(locked)
+        .layoutPriority(1)
+        .help(locked ? "This file is already in the print queue" : "Change copies and pages")
+        .popover(isPresented: $editing, arrowEdge: .bottom) { editor }
     }
 
-    private var pagesArgument: String {
-        switch pageMode {
-        case .all: return ""
-        case .odd: return "odd"
-        case .even: return "even"
-        case .custom: return pageSpec.filter { !$0.isWhitespace }
-        }
-    }
-
-    private var copiesPopover: some View {
+    private var editor: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
                 Text("Copies")
@@ -563,41 +639,44 @@ struct FileRow: View {
             HStack {
                 Text("Pages")
                 Spacer()
-                Picker("", selection: $pageMode) {
+                Picker("", selection: $draft.pageMode) {
                     ForEach(PageMode.allCases) { Text($0.rawValue).tag($0) }
                 }
                 .labelsHidden()
                 .frame(width: 150)
             }
-            if pageMode == .custom {
-                TextField("e.g. 1, 3, 5-9 or 8", text: $pageSpec)
+            if draft.pageMode == .custom {
+                TextField("e.g. 1, 3, 5-9 or 8", text: $draft.pageSpec)
                     .textFieldStyle(.roundedBorder)
             }
-            if let error = pagesError, pageMode != .custom || !pageSpec.isEmpty {
+            if let error = draft.pagesError, draft.pageMode != .custom || !draft.pageSpec.isEmpty {
                 Text(error).font(.caption).foregroundStyle(.red)
-            } else if let n = pageCount {
+            } else if let n = draft.pageCount {
                 Text("This document has \(n) \(n == 1 ? "page" : "pages").")
                     .font(.caption).foregroundStyle(.secondary)
             }
             HStack {
                 Spacer()
-                Button("Cancel") { askCopies = false }
-                Button("Print") {
-                    if let n = parseCopies(rowCopies), pagesError == nil {
-                        askCopies = false
-                        model.enqueue([url], copies: n, pages: pagesArgument)
+                Button("Cancel") { editing = false }
+                Button("Done") {
+                    if let n = parseCopies(rowCopies), draft.pagesError == nil {
+                        draft.copies = n
+                        model.settings[url] = draft
+                        editing = false
                     }
                 }
                 .keyboardShortcut(.defaultAction)
                 .buttonStyle(.borderedProminent)
-                .disabled(parseCopies(rowCopies) == nil || pagesError != nil)
+                .disabled(invalid)
             }
         }
         .padding(16)
         .frame(width: 300)
     }
 
-    @ViewBuilder private func badge(_ status: FileStatus) -> some View {
+    private var invalid: Bool { parseCopies(rowCopies) == nil || draft.pagesError != nil }
+
+    @ViewBuilder private func statusBadge(_ status: FileStatus) -> some View {
         switch status {
         case .waiting: EmptyView()
         case .queued: capsule("Queued", .blue)
@@ -639,15 +718,16 @@ struct ContentView: View {
                         .disabled(model.busy)
                 }
                 Spacer()
-                Text("Copies per file")
-                CopiesField(text: $model.copiesText)
             }
-            .help("Used by “Print Selected”. The printer button on each file asks for its own copies.")
-            if model.copies == nil {
-                Text("Enter a number from 1 to 99")
-                    .font(.caption).foregroundStyle(.red)
-                    .frame(maxWidth: .infinity, alignment: .trailing)
+            HStack {
+                Picker("Colour", selection: $model.colorMode) {
+                    ForEach(ColorMode.allCases) { Text($0.label).tag($0) }
+                }
+                Picker("Resolution", selection: $model.resolution) {
+                    ForEach(Resolution.allCases) { Text($0.label).tag($0) }
+                }
             }
+            .help("Grayscale and 300 dpi print faster. Applies to files added to the queue from now on.")
             Toggle("Print last page first (stack comes out with page 1 on top)", isOn: $model.reverseOrder)
                 .toggleStyle(.checkbox)
                 .disabled(model.busy)
@@ -662,7 +742,7 @@ struct ContentView: View {
             .keyboardShortcut(.defaultAction)
             .buttonStyle(.borderedProminent)
             .controlSize(.large)
-            .disabled(model.selectedFiles.isEmpty || model.copies == nil || !model.printer.canAcceptJobs)
+            .disabled(model.selectedFiles.isEmpty || !model.printer.canAcceptJobs)
 
             statusView
         }
@@ -753,7 +833,7 @@ struct ContentView: View {
     private var idleText: String {
         if model.files.isEmpty { return "No files yet" }
         if !model.printer.canAcceptJobs { return "Waiting for the printer to be ready" }
-        if model.selectedFiles.isEmpty { return "Tick files to print, or use the printer button on a file" }
+        if model.selectedFiles.isEmpty { return "Tick the files to print" }
         return "Ready to print"
     }
 
@@ -784,11 +864,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let model = PrintModel.shared
         let urls = args[(i + 1)...].map { URL(fileURLWithPath: $0) }
         model.add(urls)
-        model.enqueue([urls[0]], copies: 1)
+        model.enqueue([urls[0]])
         if urls.count > 1 {
             DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
                 MainActor.assumeIsolated {
-                    model.enqueue(Array(urls.dropFirst()), copies: 1)
+                    model.enqueue(Array(urls.dropFirst()))
                     Swift.print("queued:", urls.dropFirst().map { model.status($0) })
                 }
             }
