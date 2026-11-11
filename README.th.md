@@ -7,7 +7,7 @@
 <p align="center"><b>แอปสั่งพิมพ์ Canon PIXMA G2010 สำหรับ Mac ที่ใช้ชิป Apple Silicon</b></p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/App-v1.0.0-8250df" alt="App: v1.0.0">
+  <img src="https://img.shields.io/badge/App-v1.1.0-8250df" alt="App: v1.1.0">
   <img src="https://img.shields.io/badge/macOS-14%2B-555555?logo=apple&logoColor=white" alt="macOS: 14+">
   <img src="https://img.shields.io/badge/Hardware-Apple%20silicon-6e56cf?logo=apple&logoColor=white" alt="Hardware: Apple silicon">
   <img src="https://img.shields.io/badge/Printer-Canon%20G2010-c1121f" alt="Printer: Canon G2010">
