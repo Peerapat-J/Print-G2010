@@ -36,6 +36,7 @@ PDF -> (cupsfilter / Apple cgpdftoraster) CUPS raster
 ```sh
 brew install pkgconf
 scripts/build-gutenprint.sh      # ~2 นาที ผลอยู่ใน build/ (ไม่ commit)
+scripts/build-sane.sh            # ส่วนสแกน: libusb + SANE (เฉพาะ backend pixma) ผลอยู่ใน build/sane/
 ```
 
 พิมพ์ทุกครั้ง:
@@ -74,13 +75,13 @@ scripts/build-app.sh             # สร้าง build/Print G2010.app (ต้
 
 - ติดตั้งตัวกรอง Gutenprint ลงระบบ (ต้อง sudo) เพื่อพิมพ์จาก Command+P ได้ ตัวกรองต้องอยู่ในที่ที่ cupsd อ่านได้ (เช่น `/Library/Printers/...`) และคิวใหม่ควรใช้ PPD จาก `build/ppd`
 - ตรวจคุณภาพ ขอบกระดาษ สี และหลายหน้า/สองหน้า
-- สแกน ยังทำผ่าน SANE ได้ตามเอกสารวิจัยเดิม ยังไม่รวมเป็นแอป
+- สแกน: มีหน้าต่าง Scan G2010 ในแอปแล้ว (ดูหัวข้อสแกนด้านล่าง) ที่ยังไม่ได้ทำ: ลากสลับหน้า ตัวอย่างก่อนสแกนจริง และปุ่มส่งหน้าที่สแกนไปพิมพ์ต่อ
 - ลบ Gutenprint 5.3.3 (Intel) ที่ติดตั้งไว้ที่ `/Library/Printers/Gutenprint.printerDriver` ใช้ `uninstall-gutenprint.command` จาก dmg
 
 ## โปรเจกต์ Xcode และการแจกให้คนอื่น
 
 - `project.yml` คือไฟล์ต้นทางของโปรเจกต์ Xcode (ใช้ XcodeGen) ส่วน `PrintG2010.xcodeproj` กับ `app/Info.plist` สร้างจากมันแล้ว commit ไว้เพื่อเปิดใน Xcode ได้เลย แก้ `project.yml` แล้วรัน `xcodegen` เพื่อสร้างใหม่ (`scripts/build-app.sh` ทำให้เองถ้ามี xcodegen)
-- มี 2 target: `pdf-tool` (เครื่องมือแยกหน้า PDF จาก `tools/pdf-tool`) และ `PrintG2010` (ตัวแอป จาก `app/`) phase "Bundle helpers" (`scripts/xcode-bundle-helpers.sh`) คัดลอกของที่แอปต้องใช้เข้าไปใน `.app` ต้องรัน `scripts/build-gutenprint.sh` ก่อนอย่างน้อยหนึ่งครั้ง
+- มี 2 target: `pdf-tool` (เครื่องมือแยกหน้า PDF จาก `tools/pdf-tool`) และ `PrintG2010` (ตัวแอป จาก `app/`) phase "Bundle helpers" (`scripts/xcode-bundle-helpers.sh`) คัดลอกของที่แอปต้องใช้เข้าไปใน `.app` ต้องรัน `scripts/build-gutenprint.sh` และ `scripts/build-sane.sh` ก่อนอย่างน้อยหนึ่งครั้ง (ถ้าไม่มี build/sane/ phase นี้จะหยุดพร้อมข้อความบอก)
 - ค่าเริ่มต้นแอปเซ็นแบบ ad-hoc (ใช้ได้เฉพาะเครื่องนี้) ไม่ใช้ sandbox (ต้องเรียกโปรเซสอื่น) และรองรับเฉพาะ Mac ชิป Apple (arm64) macOS 14 ขึ้นไป เพราะ Gutenprint ที่แนบไปคอมไพล์เป็น arm64 อย่างเดียว
 - ไอคอนสร้างด้วย `swift scripts/make-icon.swift` (ผลอยู่ใน `app/Assets.xcassets`)
 - `scripts/make-dmg.sh` สร้าง `dist/PrintG2010-<เวอร์ชัน>.dmg` (หน้าต่างติดตั้งที่มีแอป ลูกศร และทางลัด Applications) เพื่อส่งให้เพื่อนร่วมงาน สร้างด้วย `dmgbuild` (ติดตั้งครั้งเดียวด้วย `pipx install dmgbuild`) หน้าต่างกำหนดใน `scripts/dmg/settings.py` และรูปพื้นหลังสร้างด้วย `swift scripts/make-dmg-background.swift`
@@ -92,3 +93,11 @@ scripts/build-app.sh             # สร้าง build/Print G2010.app (ต้
   - ตรวจผลลัพธ์: `spctl --assess --type execute -vv "build/Print G2010.app"` ควรได้ `accepted` และ `source=Notarized Developer ID`
 - `scripts/build-app.sh` เลือกใบรับรอง Developer ID ในเครื่องให้อัตโนมัติ หรือระบุเองด้วย `SIGN_IDENTITY="ชื่อใบรับรอง"` และบังคับเซ็นแบบ ad-hoc ด้วย `SIGN_IDENTITY=-`
 - ที่ยังไม่ได้ทดสอบ: ติดตั้งจาก DMG บนเครื่องอื่นจริง และการเพิ่มคิวพิมพ์บนเครื่องที่ไม่เคยลง driver ของ Canon
+
+## สแกน
+
+- แอปมีหน้าต่างที่สองชื่อ "Scan G2010" (`Window` id `scan` ใน `app/PrintG2010.swift`) เปิดจากปุ่ม Scan… ในหน้าพิมพ์ หรือ ⌘2 โค้ดอยู่ใน `app/Scan.swift` (ตั้งค่า, เรียก scanimage, บันทึก PDF/PNG/JPEG) และ `app/ScanView.swift` (หน้าตา)
+- แอปเรียก `scanimage` ของ SANE เป็น process ย่อย ด้วย `--format=tiff` เก็บแต่ละหน้าเป็นไฟล์ TIFF ในโฟลเดอร์ชั่วคราว แล้วแปลงเป็น PDF/PNG/JPEG ตอนกดบันทึก (ImageIO/CoreGraphics ของ macOS ไม่ต้องใช้เครื่องมือเพิ่ม) PDF แบบสีและเทาใช้ JPEG คุณภาพ 0.8 ข้างใน แบบขาวดำไม่บีบอัดแบบสูญเสียคุณภาพ ขนาดหน้า PDF ตรงกับกระดาษที่สแกน
+- `scripts/build-sane.sh` build libusb 1.0.30, libjpeg 10 (static) และ sane-backends 1.4.0 จากซอร์สโดยล็อก sha256 ตั้ง deployment target 14.0 เพราะ bottle ของ Homebrew ต้องใช้ macOS ใหม่สุด (libusb ของ Homebrew มี minos 27.0) เปิดเฉพาะ backend pixma แบบ `--enable-preload` ฝังใน scanimage เลย จึงต้องแนบแค่ `scanimage` และ `libusb-1.0.0.dylib` กับ `etc/dll.conf` `etc/pixma.conf` (ชี้ด้วย `SANE_CONFIG_DIR`) ต้องใส่ `-Wno-incompatible-function-pointer-types` เพราะ clang รุ่นใหม่ถือว่าตารางฟังก์ชันของ SANE เป็น error
+- เครื่องพิมพ์กับสแกนเนอร์ใช้สาย USB เส้นเดียว แอปจึงไม่ให้ทำพร้อมกัน: สั่งสแกนตอนกำลังพิมพ์ หน้าต่างสแกนรอให้คิวพิมพ์ว่างแล้วเริ่มเอง (กด Cancel ได้) และสั่งพิมพ์ตอนกำลังสแกน คิวพิมพ์รอให้สแกนเสร็จ (`ScanModel.run` กับ `PrintModel.drain`) การให้พิมพ์กับสแกนพร้อมกันจริงยังไม่เคยทดสอบ
+- ทดสอบแล้วกับเครื่องจริง (กระจกวางกระดาษเปล่า) ผ่าน `--scan-selftest <โฟลเดอร์> <Color|Gray|Lineart> <dpi>`: Color/Gray 150 dpi, Lineart 300 dpi, Color 600 dpi (ตัดบางส่วน), บันทึกครบ 3 รูปแบบ, ยกเลิกกลางสแกนแล้วสแกนต่อได้ ยังไม่ได้ทดสอบ: ตัวหน้าต่างด้วยตา, sleep/wake, notarize แอปที่มี scanimage แนบ, การสแกนหลายหน้า

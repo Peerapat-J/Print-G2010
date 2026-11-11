@@ -413,6 +413,12 @@ final class PrintModel: ObservableObject {
         let began = Date()
         var finished = 0
         while !queue.isEmpty {
+            // The scanner shares the printer's USB cable, so wait for a scan in progress to end.
+            // The scan window does the same in reverse before it starts (see ScanModel.run).
+            if ScanModel.shared.scanning {
+                state = .working("Waiting for the scanner to finish…")
+                while ScanModel.shared.scanning { try? await Task.sleep(nanoseconds: 500_000_000) }
+            }
             let job = queue.removeFirst()
             if await runOne(job) {
                 finished += 1
@@ -699,6 +705,7 @@ struct FileRow: View {
 struct ContentView: View {
     @ObservedObject var model: PrintModel
     @State private var targeted = false
+    @Environment(\.openWindow) private var openWindow
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -718,6 +725,10 @@ struct ContentView: View {
                         .disabled(model.busy)
                 }
                 Spacer()
+                Button { openWindow(id: "scan") } label: {
+                    Label("Scan…", systemImage: "scanner")
+                }
+                .help("Open the scan window (⌘2)")
             }
             HStack {
                 Picker("Colour", selection: $model.colorMode) {
@@ -857,6 +868,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             Task { Swift.print("printer:", await Engine.printerStatus()); exit(0) }
             return
         }
+        if let i = args.firstIndex(of: "--scan-selftest"), i + 1 < args.count {
+            let folder = URL(fileURLWithPath: args[i + 1])
+            let mode = args.count > i + 2 ? ScanMode(rawValue: args[i + 2]) ?? .color : .color
+            let dpi = args.count > i + 3 ? Int(args[i + 3]) ?? 150 : 150
+            Task { await ScanModel.shared.selfTest(into: folder, mode: mode, dpi: dpi); exit(0) }
+            return
+        }
         guard let i = args.firstIndex(of: "--selftest"), i + 1 < args.count else { return }
         // Headless check: print the given files through the same code path and report the end state.
         // The first file starts at once, the others are queued one second later (like clicking
@@ -889,17 +907,38 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
+
+    /// Stop a scan that is still running and delete the scanned pages kept in the temporary folder.
+    func applicationWillTerminate(_ notification: Notification) {
+        ScanModel.shared.cancel()
+        ScanModel.shared.discardAll()
+    }
 }
 
 @main
 struct PrintG2010App: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var delegate
 
+    @Environment(\.openWindow) private var openWindow
+
     var body: some Scene {
         Window("Print G2010", id: "main") {
             ContentView(model: PrintModel.shared)
         }
         .defaultSize(width: 560, height: 560)
+        .windowResizability(.contentMinSize)
+        .commands {
+            CommandGroup(after: .newItem) {
+                Button("Print…") { openWindow(id: "main") }.keyboardShortcut("1")
+                Button("Scan…") { openWindow(id: "scan") }.keyboardShortcut("2")
+            }
+        }
+
+        // A single window: there is one scanner, so a second scan window would have no use.
+        Window("Scan G2010", id: "scan") {
+            ScanView(model: ScanModel.shared)
+        }
+        .defaultSize(width: 720, height: 540)
         .windowResizability(.contentMinSize)
     }
 }
