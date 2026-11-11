@@ -898,7 +898,32 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         Navigator.shared.page = .print
     }
 
-    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
+    /// Closing the window quits the app, unless that would lose scanned pages that were not saved:
+    /// then the app stays open (reopen it from the Dock) and Quit asks first.
+    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
+        !ScanModel.shared.hasUnsavedPages
+    }
+
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        let scan = ScanModel.shared
+        guard scan.hasUnsavedPages else { return .terminateNow }
+        let n = scan.pages.count
+        let alert = NSAlert()
+        alert.messageText = "Quit without saving your scan?"
+        alert.informativeText = n == 1
+            ? "The page you scanned has not been saved. It will be lost if you quit."
+            : "The \(n) pages you scanned have not been saved. They will be lost if you quit."
+        alert.addButton(withTitle: "Cancel")
+        alert.addButton(withTitle: "Quit Without Saving").hasDestructiveAction = true
+        // A sheet on the app's window, like the Save dialog; a plain alert only if there is no window.
+        if let window = NSApp.keyWindow ?? NSApp.mainWindow {
+            alert.beginSheetModal(for: window) { response in
+                NSApp.reply(toApplicationShouldTerminate: response == .alertSecondButtonReturn)
+            }
+            return .terminateLater
+        }
+        return alert.runModal() == .alertSecondButtonReturn ? .terminateNow : .terminateCancel
+    }
 
     /// Stop a scan that is still running and delete the scanned pages kept in the temporary folder.
     func applicationWillTerminate(_ notification: Notification) {

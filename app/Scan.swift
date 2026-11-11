@@ -276,6 +276,10 @@ final class ScanModel: ObservableObject {
     /// Files written by the last Save, for "Show in Finder".
     @Published private(set) var lastSaved: [URL] = []
 
+    /// The pages in the strip have changed since they were last saved (or never were), so quitting would lose them.
+    private var unsaved = false
+    var hasUnsavedPages: Bool { unsaved && !pages.isEmpty }
+
     private var task: Task<Void, Never>?
     private var process: ScanProcess?
     /// A scan was requested and `run` has not reached "scanning" or finished yet. `state` does not
@@ -356,6 +360,7 @@ final class ScanModel: ObservableObject {
         }
         let page = ScannedPage(url: out, dpi: dpi, mode: mode, thumbnail: thumb)
         pages.append(page)
+        unsaved = true
         select(page.id)
         state = .idle
     }
@@ -392,12 +397,14 @@ final class ScanModel: ObservableObject {
         guard !saving, let i = pages.firstIndex(where: { $0.id == id }) else { return }
         try? FileManager.default.removeItem(at: pages[i].url)
         pages.remove(at: i)
+        unsaved = true
         if selectedID == id { select(pages.isEmpty ? nil : pages[min(i, pages.count - 1)].id) }
     }
 
     func move(_ id: UUID, by offset: Int) {
         guard let i = pages.firstIndex(where: { $0.id == id }), pages.indices.contains(i + offset) else { return }
         pages.swapAt(i, i + offset)
+        unsaved = true
     }
 
     /// Drag and drop: moves a page to where `target` is, and the pages in between shift over by one.
@@ -406,11 +413,13 @@ final class ScanModel: ObservableObject {
               let from = pages.firstIndex(where: { $0.id == id }),
               let to = pages.firstIndex(where: { $0.id == target }) else { return }
         pages.move(fromOffsets: IndexSet(integer: from), toOffset: to > from ? to + 1 : to)
+        unsaved = true
     }
 
     /// Removes every page and its temporary file.
     func discardAll() {
         pages = []
+        unsaved = false
         select(nil)
         lastSaved = []
         if let folder { try? FileManager.default.removeItem(at: folder) }
@@ -457,6 +466,8 @@ final class ScanModel: ObservableObject {
             do {
                 let written = try await Task.detached { try ScanExport.write(pages, as: format, to: url) }.value
                 lastSaved = written
+                // Saved as they are now, unless the order was changed while it wrote.
+                if self.pages.map(\.id) == pages.map(\.id) { unsaved = false }
                 if case .failed = state { state = .idle }
             } catch {
                 state = .failed("Could not save the scan. \(error.localizedDescription)")
