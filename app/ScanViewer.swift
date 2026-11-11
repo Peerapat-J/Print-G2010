@@ -35,8 +35,12 @@ struct ScanViewer: View {
         .task(id: model.selectedID) {
             scale = nil
             full = nil
+            let wanted = model.selectedID
             guard let url = model.selectedPage?.url else { return }
-            full = await Task.detached { ScanImage.fullSize(url) }.value
+            let image = await Task.detached { ScanImage.fullSize(url) }.value
+            // A slow decode of an earlier page must not replace the page selected since.
+            guard !Task.isCancelled, model.selectedID == wanted else { return }
+            full = image
         }
     }
 
