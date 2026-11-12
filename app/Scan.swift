@@ -393,7 +393,27 @@ final class ScanModel: ObservableObject {
         }
     }
 
-    func delete(_ id: UUID) {
+    /// Asks before deleting a page; the page cannot be brought back. Cancel is the default button, so
+    /// pressing Return does not delete.
+    func confirmDelete(_ id: UUID) {
+        guard !saving, let i = pages.firstIndex(where: { $0.id == id }) else { return }
+        let alert = NSAlert()
+        alert.messageText = pages.count == 1 ? "Delete this page?" : "Delete page \(i + 1)?"
+        alert.informativeText = "This page will be removed from the scan. This can’t be undone."
+        alert.addButton(withTitle: "Cancel")
+        alert.addButton(withTitle: "Delete").hasDestructiveAction = true
+        // A sheet on the app's window, like the Save dialog and the quit warning.
+        if let window = NSApp.keyWindow ?? NSApp.mainWindow {
+            alert.beginSheetModal(for: window) { response in
+                guard response == .alertSecondButtonReturn else { return }
+                Task { @MainActor in self.delete(id) }
+            }
+        } else if alert.runModal() == .alertSecondButtonReturn {
+            delete(id)
+        }
+    }
+
+    private func delete(_ id: UUID) {
         guard !saving, let i = pages.firstIndex(where: { $0.id == id }) else { return }
         try? FileManager.default.removeItem(at: pages[i].url)
         pages.remove(at: i)

@@ -77,6 +77,8 @@ struct ScanView: View {
                 Image(nsImage: image)
                     .resizable().scaledToFit()
                     .border(Color.secondary.opacity(0.35), width: 0.5)
+                    // On the paper itself, so it sits in the page's corner whatever the page's shape.
+                    .overlay(alignment: .topTrailing) { deleteButton }
                     .padding(12)
                     .onTapGesture(count: 2) { openWindow(id: "scan-preview") }
             } else if !model.busy {
@@ -110,6 +112,25 @@ struct ScanView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
+    /// A trash can in a circle on the corner of the page shown; it asks before deleting.
+    @ViewBuilder private var deleteButton: some View {
+        if let page = model.selectedPage {
+            Button { model.confirmDelete(page.id) } label: {
+                Image(systemName: "trash")
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(.red)
+                    .frame(width: 30, height: 30)
+                    .background(.regularMaterial, in: Circle())
+                    .overlay(Circle().stroke(Color.secondary.opacity(0.3), lineWidth: 0.5))
+            }
+            .buttonStyle(.plain)
+            .disabled(model.saving)
+            .padding(8)
+            .help("Delete this page")
+            .accessibilityLabel("Delete page")
+        }
+    }
+
     @ViewBuilder private var pageStrip: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack {
@@ -119,11 +140,6 @@ struct ScanView: View {
                     Text("· Drag to reorder").font(.callout).foregroundStyle(.secondary)
                 }
                 Spacer()
-                if let page = model.selectedPage {
-                    Button("Delete Page") { model.delete(page.id) }
-                        .buttonStyle(.link)
-                        .disabled(model.saving)
-                }
             }
             ScrollView(.horizontal) {
                 HStack(spacing: 8) {
@@ -158,7 +174,7 @@ struct ScanView: View {
                 Button("Move Left") { model.move(page.id, by: -1) }.disabled(number == 1)
                 Button("Move Right") { model.move(page.id, by: 1) }.disabled(number == model.pages.count)
                 Divider()
-                Button("Delete Page") { model.delete(page.id) }.disabled(model.saving)
+                Button("Delete Page…") { model.confirmDelete(page.id) }.disabled(model.saving)
             }
     }
 
