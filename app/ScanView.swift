@@ -7,6 +7,22 @@ struct ScanView: View {
     @Environment(\.openWindow) private var openWindow
     /// The page being dragged in the strip, so the others can make room as it passes over them.
     @State private var draggingPage: UUID?
+    /// What the first page comes to in the chosen format, in bytes; the line under Save As is that times
+    /// the number of pages. nil until it has been worked out.
+    @State private var bytesPerPage: Int?
+
+    /// What the size depends on: the first page (its picture and turn) and the format and quality.
+    private struct EstimateKey: Equatable {
+        let page: UUID?
+        let revision: Int
+        let format: ScanFormat
+        let quality: ScanQuality
+    }
+
+    private var estimateKey: EstimateKey {
+        let first = model.pages.first
+        return EstimateKey(page: first?.id, revision: first?.revision ?? 0, format: model.format, quality: model.quality)
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -26,6 +42,17 @@ struct ScanView: View {
                 .padding(.horizontal, 16).padding(.vertical, 12)
         }
         .frame(minWidth: 660, idealWidth: 720, minHeight: 500, idealHeight: 540)
+        .task(id: estimateKey) {
+            bytesPerPage = nil
+            guard let page = model.pages.first else { return }
+            // Wait a moment so flicking through settings does not encode a page for each one.
+            try? await Task.sleep(nanoseconds: 300_000_000)
+            guard !Task.isCancelled else { return }
+            let format = model.format, quality = model.quality
+            let bytes = await Task.detached { ScanExport.encodedSize(of: page, as: format, quality: quality) }.value
+            guard !Task.isCancelled else { return }
+            bytesPerPage = bytes
+        }
     }
 
     // MARK: Settings
@@ -78,6 +105,11 @@ struct ScanView: View {
                     .pickerStyle(.segmented).labelsHidden()
                     Text("A smaller file looks a little rougher.")
                         .font(.caption).foregroundStyle(.secondary)
+                }
+                if let bytes = bytesPerPage, !model.pages.isEmpty {
+                    let total = ByteCountFormatter.string(fromByteCount: Int64(bytes) * Int64(model.pages.count), countStyle: .file)
+                    Text(model.pages.count == 1 ? "About \(total)." : "About \(total) for \(model.pages.count) pages.")
+                        .font(.callout).foregroundStyle(.secondary).padding(.top, 8)
                 }
             }
             Spacer(minLength: 0)

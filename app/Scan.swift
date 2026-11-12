@@ -263,15 +263,36 @@ enum ScanExport {
               let dest = CGImageDestinationCreateWithURL(url as CFURL, type.identifier as CFString, 1, nil) else {
             throw ScanExportError(message: "Could not create \(url.lastPathComponent).")
         }
+        CGImageDestinationAddImageFromSource(dest, src, 0, imageProperties(page, type: type, quality: quality))
+        guard CGImageDestinationFinalize(dest) else {
+            throw ScanExportError(message: "Could not write \(url.lastPathComponent).")
+        }
+    }
+
+    private static func imageProperties(_ page: ScannedPage, type: UTType, quality: ScanQuality) -> CFDictionary {
         var props: [CFString: Any] = [kCGImagePropertyDPIWidth: page.dpi, kCGImagePropertyDPIHeight: page.dpi]
         if type == .jpeg { props[kCGImageDestinationLossyCompressionQuality] = quality.jpeg }
         // The scanner's TIFF is uncompressed (about 26 MB for an A4 page at 300 dpi); LZW keeps every pixel
         // and makes the file much smaller.
         if type == .tiff { props[kCGImagePropertyTIFFDictionary] = [kCGImagePropertyTIFFCompression: 5] }
-        CGImageDestinationAddImageFromSource(dest, src, 0, props as CFDictionary)
-        guard CGImageDestinationFinalize(dest) else {
-            throw ScanExportError(message: "Could not write \(url.lastPathComponent).")
+        return props as CFDictionary
+    }
+
+    /// The size in bytes of one page saved in this format and quality, found by writing it to memory
+    /// (nothing touches the disk). The Scan page multiplies it by the page count for "about 4 MB".
+    static func encodedSize(of page: ScannedPage, as format: ScanFormat, quality: ScanQuality) -> Int? {
+        let data = NSMutableData()
+        if format == .pdf {
+            var box = CGRect(x: 0, y: 0, width: 612, height: 792)
+            guard let consumer = CGDataConsumer(data: data),
+                  let context = CGContext(consumer: consumer, mediaBox: &box, nil),
+                  (try? drawPDF([page], quality: quality, into: context)) != nil else { return nil }
+            return data.length
         }
+        guard let src = CGImageSourceCreateWithURL(page.url as CFURL, nil),
+              let dest = CGImageDestinationCreateWithData(data, format.type.identifier as CFString, 1, nil) else { return nil }
+        CGImageDestinationAddImageFromSource(dest, src, 0, imageProperties(page, type: format.type, quality: quality))
+        return CGImageDestinationFinalize(dest) ? data.length : nil
     }
 
     private static func writePDF(_ pages: [ScannedPage], quality: ScanQuality, to url: URL) throws {
@@ -279,6 +300,11 @@ enum ScanExport {
         guard let context = CGContext(url as CFURL, mediaBox: &first, nil) else {
             throw ScanExportError(message: "Could not create \(url.lastPathComponent).")
         }
+        try drawPDF(pages, quality: quality, into: context)
+    }
+
+    /// One PDF page per scan, then closes the PDF.
+    private static func drawPDF(_ pages: [ScannedPage], quality: ScanQuality, into context: CGContext) throws {
         for page in pages {
             guard let image = pdfImage(for: page, quality: quality) else {
                 context.closePDF()
