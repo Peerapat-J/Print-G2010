@@ -60,8 +60,15 @@ struct ScanView: View {
                     ForEach(ScanFormat.allCases) { Text($0.rawValue).tag($0) }
                 }
                 .pickerStyle(.segmented).labelsHidden()
-                Text(model.format == .pdf ? "One PDF with all the pages."
-                     : "One \(model.format.rawValue) file for each page.")
+                if model.format == .pdf {
+                    Picker("PDF files", selection: $model.separatePDFs) {
+                        Text("One file").tag(false)
+                        Text("Each page").tag(true)
+                    }
+                    .pickerStyle(.segmented).labelsHidden()
+                }
+                Text(model.savesOneFilePerPage ? "One \(model.format.rawValue) file for each page."
+                     : "One PDF with all the pages.")
                     .font(.caption).foregroundStyle(.secondary)
             }
             Spacer(minLength: 0)
@@ -209,7 +216,9 @@ struct ScanView: View {
     private var saveLabel: String {
         let n = model.pages.count
         if n == 0 { return "Save…" }
-        if model.format == .pdf { return "Save PDF (\(n) \(n == 1 ? "page" : "pages"))…" }
+        if model.format == .pdf {
+            return model.savesOneFilePerPage && n > 1 ? "Save \(n) PDFs…" : "Save PDF (\(n) \(n == 1 ? "page" : "pages"))…"
+        }
         return n == 1 ? "Save Image…" : "Save \(n) Images…"
     }
 

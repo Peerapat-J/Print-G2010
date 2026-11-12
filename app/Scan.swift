@@ -170,10 +170,11 @@ struct ScanExportError: Error, LocalizedError {
 }
 
 enum ScanExport {
-    /// Writes the pages: one PDF with a page per scan, or one image file per scan. Several images are
-    /// numbered ("Scan 1.png", "Scan 2.png"). Returns the files written.
-    static func write(_ pages: [ScannedPage], as format: ScanFormat, to url: URL) throws -> [URL] {
-        if format == .pdf {
+    /// Writes the pages: one PDF with a page per scan, or one file per scan (always for images, and for
+    /// PDF when `separatePDFs` is on). Several files are numbered ("Scan 1.png", "Scan 2.png").
+    /// Returns the files written.
+    static func write(_ pages: [ScannedPage], as format: ScanFormat, separatePDFs: Bool = false, to url: URL) throws -> [URL] {
+        if format == .pdf && !separatePDFs {
             try writePDF(pages, to: url)
             return [url]
         }
@@ -192,7 +193,11 @@ enum ScanExport {
             throw ScanExportError(message: "\(existing.lastPathComponent) already exists. Choose another name.")
         }
         for (page, target) in zip(pages, targets) {
-            try writeImage(page, type: format.type, to: target)
+            if format == .pdf {
+                try writePDF([page], to: target)
+            } else {
+                try writeImage(page, type: format.type, to: target)
+            }
         }
         return targets
     }
@@ -270,6 +275,11 @@ final class ScanModel: ObservableObject {
         didSet { UserDefaults.standard.set(format.rawValue, forKey: "scanFormat") }
     }
 
+    /// With PDF: a PDF for each page, instead of one PDF with all of them.
+    @Published var separatePDFs: Bool = UserDefaults.standard.bool(forKey: "scanSeparatePDFs") {
+        didSet { UserDefaults.standard.set(separatePDFs, forKey: "scanSeparatePDFs") }
+    }
+
     @Published private(set) var pages: [ScannedPage] = []
     @Published private(set) var selectedID: UUID?
     @Published private(set) var preview: NSImage?
@@ -294,6 +304,9 @@ final class ScanModel: ObservableObject {
     /// The scanner is in use right now; printing waits for this to end (see PrintModel.drain).
     var scanning: Bool { state == .scanning }
     var busy: Bool { state == .scanning || state == .waitingForPrinter }
+
+    /// Saving writes a file for each page, rather than one file with all of them.
+    var savesOneFilePerPage: Bool { format != .pdf || separatePDFs }
 
     var selectedPage: ScannedPage? { pages.first { $0.id == selectedID } }
 
@@ -467,7 +480,7 @@ final class ScanModel: ObservableObject {
         panel.nameFieldStringValue = defaultName + "." + format.fileExtension
         panel.allowedContentTypes = [format.type]
         panel.canCreateDirectories = true
-        if format != .pdf && pages.count > 1 {
+        if savesOneFilePerPage && pages.count > 1 {
             panel.message = "Each page is saved as its own file, numbered after this name."
         }
         // A sheet slides down from the title bar of the app's window, instead of a free panel that
@@ -483,12 +496,12 @@ final class ScanModel: ObservableObject {
     }
 
     private func write(to url: URL) {
-        let pages = pages, format = format
+        let pages = pages, format = format, separatePDFs = separatePDFs
         saving = true
         Task {
             defer { saving = false }
             do {
-                let written = try await Task.detached { try ScanExport.write(pages, as: format, to: url) }.value
+                let written = try await Task.detached { try ScanExport.write(pages, as: format, separatePDFs: separatePDFs, to: url) }.value
                 lastSaved = written
                 // Saved as they are now, unless the order was changed while it wrote.
                 if self.pages.map(\.id) == pages.map(\.id) { unsaved = false }
