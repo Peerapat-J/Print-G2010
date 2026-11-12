@@ -519,7 +519,7 @@ struct CopiesField: View {
         HStack(spacing: 6) {
             TextField("", text: $text)
                 .multilineTextAlignment(.trailing)
-                .frame(width: 48)
+                .frame(minWidth: 48, maxWidth: .infinity)
                 .onChange(of: text) { _, v in
                     // digits only, at most two of them
                     let clean = String(v.filter { $0.isASCII && $0.isNumber }.prefix(2))
@@ -639,32 +639,38 @@ struct FileRow: View {
 
     private var editor: some View {
         VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Text("Copies")
-                Spacer()
-                CopiesField(text: $rowCopies)
-            }
-            if parseCopies(rowCopies) == nil {
-                Text("Enter a number from 1 to 99").font(.caption).foregroundStyle(.red)
-            }
-            HStack {
-                Text("Pages")
-                Spacer()
-                Picker("", selection: $draft.pageMode) {
-                    ForEach(PageMode.allCases) { Text($0.rawValue).tag($0) }
+            // The labels share one column and the controls fill the rest, so both end at the same edge
+            // instead of a gap opening between each label and its control.
+            Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 12) {
+                GridRow {
+                    Text("Copies")
+                    CopiesField(text: $rowCopies)
                 }
-                .labelsHidden()
-                .frame(width: 150)
-            }
-            if draft.pageMode == .custom {
-                TextField("e.g. 1, 3, 5-9 or 8", text: $draft.pageSpec)
-                    .textFieldStyle(.roundedBorder)
-            }
-            if let error = draft.pagesError, draft.pageMode != .custom || !draft.pageSpec.isEmpty {
-                Text(error).font(.caption).foregroundStyle(.red)
-            } else if let n = draft.pageCount {
-                Text("This document has \(n) \(n == 1 ? "page" : "pages").")
-                    .font(.caption).foregroundStyle(.secondary)
+                if parseCopies(rowCopies) == nil {
+                    Text("Enter a number from 1 to 99").font(.caption).foregroundStyle(.red)
+                        .gridCellColumns(2)
+                }
+                GridRow {
+                    Text("Pages")
+                    Picker("", selection: $draft.pageMode) {
+                        ForEach(PageMode.allCases) { Text($0.rawValue).tag($0) }
+                    }
+                    .labelsHidden()
+                    .frame(maxWidth: .infinity)
+                }
+                if draft.pageMode == .custom {
+                    TextField("e.g. 1, 3, 5-9 or 8", text: $draft.pageSpec)
+                        .textFieldStyle(.roundedBorder)
+                        .gridCellColumns(2)
+                }
+                if let error = draft.pagesError, draft.pageMode != .custom || !draft.pageSpec.isEmpty {
+                    Text(error).font(.caption).foregroundStyle(.red)
+                        .gridCellColumns(2)
+                } else if let n = draft.pageCount {
+                    Text("This document has \(n) \(n == 1 ? "page" : "pages").")
+                        .font(.caption).foregroundStyle(.secondary)
+                        .gridCellColumns(2)
+                }
             }
             HStack {
                 Spacer()
@@ -682,7 +688,7 @@ struct FileRow: View {
             }
         }
         .padding(16)
-        .frame(width: 300)
+        .frame(width: 250)
     }
 
     private var invalid: Bool { parseCopies(rowCopies) == nil || draft.pagesError != nil }
