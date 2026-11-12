@@ -765,7 +765,8 @@ struct ContentView: View {
         let badge = model.printer.badge
         HStack(spacing: 6) {
             Circle().fill(badge.color).frame(width: 9, height: 9)
-            Text(badge.text).font(.callout).foregroundStyle(.secondary).lineLimit(2)
+            Text(badge.hint.map { "\(badge.title). \($0)" } ?? badge.title)
+                .font(.callout).foregroundStyle(.secondary).lineLimit(2)
         }
     }
 

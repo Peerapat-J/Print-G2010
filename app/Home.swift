@@ -27,15 +27,16 @@ final class Navigator: ObservableObject {
 }
 
 extension PrinterStatus {
-    /// Dot colour and text shown wherever the printer state is displayed.
-    var badge: (color: Color, text: String) {
+    /// Dot colour and text shown wherever the printer state is displayed: a short title, and for a
+    /// problem a hint on what to do about it (shown on its own line where there is room).
+    var badge: (color: Color, title: String, hint: String?) {
         switch self {
-        case .checking: return (.gray, "Checking printer…")
-        case .ready: return (.green, "Printer ready")
-        case .printing: return (.orange, "Printer busy")
-        case .offline: return (.red, "Printer not found — turn it on and check the USB cable")
-        case .stopped: return (.red, "Print queue stopped — check paper and warning lights")
-        case .missingQueue: return (.red, "No print queue for the G2010 — add the printer in System Settings")
+        case .checking: return (.gray, "Checking printer…", nil)
+        case .ready: return (.green, "Printer ready", nil)
+        case .printing: return (.orange, "Printer busy", nil)
+        case .offline: return (.red, "Printer not found", "Turn it on and check the USB cable")
+        case .stopped: return (.red, "Print queue stopped", "Check paper and warning lights")
+        case .missingQueue: return (.red, "No print queue", "Add the G2010 in System Settings")
         }
     }
 }
@@ -158,7 +159,7 @@ struct HomeView: View {
 
             Divider()
             statusPanel
-                .frame(width: 200)
+                .frame(width: 220)
         }
         .frame(minWidth: 612, minHeight: 312)
         .onDrop(of: [UTType.fileURL], isTargeted: $targeted) { providers in
@@ -201,9 +202,12 @@ struct HomeView: View {
             Spacer(minLength: 0)
             Image(systemName: "printer.fill").font(.system(size: 54)).foregroundStyle(.secondary)
             Text("Canon G2010").font(.title3.weight(.semibold))
-            HStack(alignment: .top, spacing: 6) {
-                Circle().fill(badge.color).frame(width: 9, height: 9).padding(.top, 5)
-                Text(badge.text).font(.callout).foregroundStyle(.secondary)
+            HStack(spacing: 6) {
+                Circle().fill(badge.color).frame(width: 9, height: 9)
+                Text(badge.title).font(.callout).foregroundStyle(.secondary)
+            }
+            if let hint = badge.hint {
+                Text(hint).font(.caption).foregroundStyle(.secondary)
             }
             Spacer(minLength: 0)
         }
