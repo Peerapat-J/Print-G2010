@@ -214,6 +214,21 @@ struct HomeView: View {
         .multilineTextAlignment(.center)
         .padding(16)
         .frame(maxHeight: .infinity)
+        // At the bottom edge, so the printer and its state stay centred.
+        .overlay(alignment: .bottom) { versionBadge }
+    }
+
+    /// The app's version, from its Info.plist, in a small capsule.
+    @ViewBuilder private var versionBadge: some View {
+        if let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String {
+            Text("v\(version)")
+                .font(.caption.monospacedDigit())
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 10).padding(.vertical, 3)
+                .background(Capsule().fill(Color.secondary.opacity(0.15)))
+                .padding(.bottom, 14)
+                .help("Print G2010 version \(version)")
+        }
     }
 }
 
