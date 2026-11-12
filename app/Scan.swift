@@ -541,6 +541,9 @@ final class ScanModel: ObservableObject {
     func rotate(_ id: UUID, clockwise: Bool) {
         guard !saving, !rotating, let page = pages.first(where: { $0.id == id }) else { return }
         rotating = true
+        // From the moment the turn starts, not when it ends: quitting or closing the window in between
+        // must ask first, as it does for any other change that is not saved.
+        unsaved = true
         let url = page.url, dpi = page.dpi
         Task {
             defer { rotating = false }
@@ -555,7 +558,6 @@ final class ScanModel: ObservableObject {
                 guard let i = pages.firstIndex(where: { $0.id == id }) else { return }
                 pages[i].thumbnail = thumb
                 pages[i].revision += 1
-                unsaved = true
                 if selectedID == id { select(id) }
             } catch {
                 if state == .idle { state = .failed("Could not turn the page. \(error.localizedDescription)") }
