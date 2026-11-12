@@ -7,12 +7,28 @@ struct ScanView: View {
     @Environment(\.openWindow) private var openWindow
     /// The page being dragged in the strip, so the others can make room as it passes over them.
     @State private var draggingPage: UUID?
+    /// What the first page comes to in the chosen format, in bytes; the line under Save As is that times
+    /// the number of pages. nil until it has been worked out.
+    @State private var bytesPerPage: Int?
+
+    /// What the size depends on: the first page (its picture and turn) and the format and quality.
+    private struct EstimateKey: Equatable {
+        let page: UUID?
+        let revision: Int
+        let format: ScanFormat
+        let quality: ScanQuality
+    }
+
+    private var estimateKey: EstimateKey {
+        let first = model.pages.first
+        return EstimateKey(page: first?.id, revision: first?.revision ?? 0, format: model.format, quality: model.quality)
+    }
 
     var body: some View {
         VStack(spacing: 0) {
             HStack(alignment: .top, spacing: 0) {
                 settings
-                    .frame(width: 200)
+                    .frame(width: 232)
                     .padding(16)
                 Divider()
                 VStack(alignment: .leading, spacing: 12) {
@@ -26,6 +42,17 @@ struct ScanView: View {
                 .padding(.horizontal, 16).padding(.vertical, 12)
         }
         .frame(minWidth: 660, idealWidth: 720, minHeight: 500, idealHeight: 540)
+        .task(id: estimateKey) {
+            bytesPerPage = nil
+            guard let page = model.pages.first else { return }
+            // Wait a moment so flicking through settings does not encode a page for each one.
+            try? await Task.sleep(nanoseconds: 300_000_000)
+            guard !Task.isCancelled else { return }
+            let format = model.format, quality = model.quality
+            let bytes = await Task.detached { ScanExport.encodedSize(of: page, as: format, quality: quality) }.value
+            guard !Task.isCancelled else { return }
+            bytesPerPage = bytes
+        }
     }
 
     // MARK: Settings
@@ -60,9 +87,30 @@ struct ScanView: View {
                     ForEach(ScanFormat.allCases) { Text($0.rawValue).tag($0) }
                 }
                 .pickerStyle(.segmented).labelsHidden()
-                Text(model.format == .pdf ? "One PDF with all the pages."
-                     : "One \(model.format.rawValue) file for each page.")
+                if model.format == .pdf {
+                    Picker("PDF files", selection: $model.separatePDFs) {
+                        Text("One file").tag(false)
+                        Text("Each page").tag(true)
+                    }
+                    .pickerStyle(.segmented).labelsHidden()
+                }
+                Text(model.savesOneFilePerPage ? "One \(model.format.rawValue) file for each page."
+                     : "One PDF with all the pages.")
                     .font(.caption).foregroundStyle(.secondary)
+                if model.qualityApplies {
+                    Text("Quality").font(.callout).foregroundStyle(.secondary).padding(.top, 8)
+                    Picker("Quality", selection: $model.quality) {
+                        ForEach(ScanQuality.allCases) { Text($0.rawValue).tag($0) }
+                    }
+                    .pickerStyle(.segmented).labelsHidden()
+                    Text("A smaller file looks a little rougher.")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+                if let bytes = bytesPerPage, !model.pages.isEmpty {
+                    let total = ByteCountFormatter.string(fromByteCount: Int64(bytes) * Int64(model.pages.count), countStyle: .file)
+                    Text(model.pages.count == 1 ? "About \(total)." : "About \(total) for \(model.pages.count) pages.")
+                        .font(.callout).foregroundStyle(.secondary).padding(.top, 8)
+                }
             }
             Spacer(minLength: 0)
         }
@@ -77,6 +125,8 @@ struct ScanView: View {
                 Image(nsImage: image)
                     .resizable().scaledToFit()
                     .border(Color.secondary.opacity(0.35), width: 0.5)
+                    // On the paper itself, so the buttons sit in the page's corners whatever its shape.
+                    .overlay(alignment: .top) { pageTools }
                     .padding(12)
                     .onTapGesture(count: 2) { openWindow(id: "scan-preview") }
             } else if !model.busy {
@@ -110,6 +160,42 @@ struct ScanView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
+    /// Buttons on the corners of the page shown: turn it left or right (top left), and a trash can that
+    /// asks before deleting (top right).
+    @ViewBuilder private var pageTools: some View {
+        if let page = model.selectedPage {
+            HStack(spacing: 8) {
+                circleButton("rotate.left", help: "Turn the page left", label: "Turn page left") {
+                    model.rotate(page.id, clockwise: false)
+                }
+                circleButton("rotate.right", help: "Turn the page right", label: "Turn page right") {
+                    model.rotate(page.id, clockwise: true)
+                }
+                Spacer(minLength: 0)
+                circleButton("trash", tint: .red, help: "Delete this page", label: "Delete page") {
+                    model.confirmDelete(page.id)
+                }
+            }
+            .disabled(model.saving || model.rotating)
+            .padding(8)
+        }
+    }
+
+    private func circleButton(_ symbol: String, tint: Color = .primary, help: String, label: String,
+                              action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: symbol)
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(tint)
+                .frame(width: 30, height: 30)
+                .background(.regularMaterial, in: Circle())
+                .overlay(Circle().stroke(Color.secondary.opacity(0.3), lineWidth: 0.5))
+        }
+        .buttonStyle(.plain)
+        .help(help)
+        .accessibilityLabel(label)
+    }
+
     @ViewBuilder private var pageStrip: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack {
@@ -119,11 +205,6 @@ struct ScanView: View {
                     Text("· Drag to reorder").font(.callout).foregroundStyle(.secondary)
                 }
                 Spacer()
-                if let page = model.selectedPage {
-                    Button("Delete Page") { model.delete(page.id) }
-                        .buttonStyle(.link)
-                        .disabled(model.saving)
-                }
             }
             ScrollView(.horizontal) {
                 HStack(spacing: 8) {
@@ -155,10 +236,13 @@ struct ScanView: View {
             }
             .onDrop(of: [UTType.text], delegate: PageDropDelegate(target: page.id, model: model, dragging: $draggingPage))
             .contextMenu {
+                Button("Turn Left") { model.rotate(page.id, clockwise: false) }.disabled(model.saving || model.rotating)
+                Button("Turn Right") { model.rotate(page.id, clockwise: true) }.disabled(model.saving || model.rotating)
+                Divider()
                 Button("Move Left") { model.move(page.id, by: -1) }.disabled(number == 1)
                 Button("Move Right") { model.move(page.id, by: 1) }.disabled(number == model.pages.count)
                 Divider()
-                Button("Delete Page") { model.delete(page.id) }.disabled(model.saving)
+                Button("Delete Page…") { model.confirmDelete(page.id) }.disabled(model.saving || model.rotating)
             }
     }
 
@@ -186,14 +270,16 @@ struct ScanView: View {
                 Text(saveLabel)
             }
             .controlSize(.large)
-            .disabled(model.pages.isEmpty || model.busy || model.saving)
+            .disabled(model.pages.isEmpty || model.busy || model.saving || model.rotating)
         }
     }
 
     private var saveLabel: String {
         let n = model.pages.count
         if n == 0 { return "Save…" }
-        if model.format == .pdf { return "Save PDF (\(n) \(n == 1 ? "page" : "pages"))…" }
+        if model.format == .pdf {
+            return model.savesOneFilePerPage && n > 1 ? "Save \(n) PDFs…" : "Save PDF (\(n) \(n == 1 ? "page" : "pages"))…"
+        }
         return n == 1 ? "Save Image…" : "Save \(n) Images…"
     }
 

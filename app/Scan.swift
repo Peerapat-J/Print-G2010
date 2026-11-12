@@ -47,16 +47,30 @@ enum ScanPaper: String, CaseIterable, Identifiable {
 }
 
 enum ScanFormat: String, CaseIterable, Identifiable {
-    case pdf = "PDF", png = "PNG", jpeg = "JPEG"
+    case pdf = "PDF", png = "PNG", jpeg = "JPEG", tiff = "TIFF"
     var id: String { rawValue }
     var type: UTType {
         switch self {
         case .pdf: return .pdf
         case .png: return .png
         case .jpeg: return .jpeg
+        case .tiff: return .tiff
         }
     }
     var fileExtension: String { self == .jpeg ? "jpg" : rawValue.lowercased() }
+}
+
+/// How hard JPEG squeezes a picture: for JPEG files, and for colour and gray pages inside a PDF.
+enum ScanQuality: String, CaseIterable, Identifiable {
+    case small = "Small", balanced = "Balanced", high = "High"
+    var id: String { rawValue }
+    var jpeg: CGFloat {
+        switch self {
+        case .small: return 0.6
+        case .balanced: return 0.85
+        case .high: return 0.95
+        }
+    }
 }
 
 enum ScanState: Equatable {
@@ -72,7 +86,9 @@ struct ScannedPage: Identifiable {
     let url: URL
     let dpi: Int
     let mode: ScanMode
-    let thumbnail: NSImage
+    var thumbnail: NSImage
+    /// Goes up each time the file is rotated, so a view showing the full-size scan knows to load it again.
+    var revision = 0
 }
 
 // MARK: - scanimage
@@ -163,17 +179,59 @@ enum ScanImage {
     }
 }
 
+extension ScanImage {
+    /// Turns the scan file a quarter turn, in place, without losing anything: the pixels are only moved,
+    /// and the file stays an uncompressed TIFF. A black and white scan (1 bit a pixel) is stored as
+    /// 8-bit gray afterwards, which PNG and PDF compress back down.
+    static func rotate(_ url: URL, clockwise: Bool, dpi: Int) throws {
+        guard let src = CGImageSourceCreateWithURL(url as CFURL, nil),
+              let cg = CGImageSourceCreateImageAtIndex(src, 0, nil) else {
+            throw ScanExportError(message: "Could not read the page.")
+        }
+        let w = cg.width, h = cg.height
+        let model = cg.colorSpace?.model
+        let gray = model == .monochrome
+        let space = (model == .monochrome || model == .rgb) ? cg.colorSpace! : CGColorSpaceCreateDeviceRGB()
+        let info = gray ? CGImageAlphaInfo.none.rawValue : CGImageAlphaInfo.noneSkipLast.rawValue
+        guard let ctx = CGContext(data: nil, width: h, height: w, bitsPerComponent: 8, bytesPerRow: 0,
+                                  space: space, bitmapInfo: info) else {
+            throw ScanExportError(message: "Not enough memory to turn the page.")
+        }
+        ctx.interpolationQuality = .none
+        if clockwise {
+            ctx.translateBy(x: 0, y: CGFloat(w)); ctx.rotate(by: -.pi / 2)
+        } else {
+            ctx.translateBy(x: CGFloat(h), y: 0); ctx.rotate(by: .pi / 2)
+        }
+        ctx.draw(cg, in: CGRect(x: 0, y: 0, width: w, height: h))
+        guard let turned = ctx.makeImage() else { throw ScanExportError(message: "Could not turn the page.") }
+        // Written next to the scan and swapped in, so a failure leaves the page as it was.
+        let temp = url.deletingLastPathComponent().appendingPathComponent("turning-\(UUID().uuidString).tiff")
+        guard let dest = CGImageDestinationCreateWithURL(temp as CFURL, UTType.tiff.identifier as CFString, 1, nil) else {
+            throw ScanExportError(message: "Could not write the turned page.")
+        }
+        CGImageDestinationAddImage(dest, turned, [kCGImagePropertyDPIWidth: dpi, kCGImagePropertyDPIHeight: dpi] as CFDictionary)
+        guard CGImageDestinationFinalize(dest) else {
+            try? FileManager.default.removeItem(at: temp)
+            throw ScanExportError(message: "Could not write the turned page.")
+        }
+        _ = try FileManager.default.replaceItemAt(url, withItemAt: temp)
+    }
+}
+
 struct ScanExportError: Error, LocalizedError {
     let message: String
     var errorDescription: String? { message }
 }
 
 enum ScanExport {
-    /// Writes the pages: one PDF with a page per scan, or one image file per scan. Several images are
-    /// numbered ("Scan 1.png", "Scan 2.png"). Returns the files written.
-    static func write(_ pages: [ScannedPage], as format: ScanFormat, to url: URL) throws -> [URL] {
-        if format == .pdf {
-            try writePDF(pages, to: url)
+    /// Writes the pages: one PDF with a page per scan, or one file per scan (always for images, and for
+    /// PDF when `separatePDFs` is on). Several files are numbered ("Scan 1.png", "Scan 2.png").
+    /// Returns the files written.
+    static func write(_ pages: [ScannedPage], as format: ScanFormat, separatePDFs: Bool = false,
+                      quality: ScanQuality = .balanced, to url: URL) throws -> [URL] {
+        if format == .pdf && !separatePDFs {
+            try writePDF(pages, quality: quality, to: url)
             return [url]
         }
         let ext = url.pathExtension.isEmpty ? format.fileExtension : url.pathExtension
@@ -191,31 +249,64 @@ enum ScanExport {
             throw ScanExportError(message: "\(existing.lastPathComponent) already exists. Choose another name.")
         }
         for (page, target) in zip(pages, targets) {
-            try writeImage(page, type: format.type, to: target)
+            if format == .pdf {
+                try writePDF([page], quality: quality, to: target)
+            } else {
+                try writeImage(page, type: format.type, quality: quality, to: target)
+            }
         }
         return targets
     }
 
-    private static func writeImage(_ page: ScannedPage, type: UTType, to url: URL) throws {
+    private static func writeImage(_ page: ScannedPage, type: UTType, quality: ScanQuality, to url: URL) throws {
         guard let src = CGImageSourceCreateWithURL(page.url as CFURL, nil),
               let dest = CGImageDestinationCreateWithURL(url as CFURL, type.identifier as CFString, 1, nil) else {
             throw ScanExportError(message: "Could not create \(url.lastPathComponent).")
         }
-        var props: [CFString: Any] = [kCGImagePropertyDPIWidth: page.dpi, kCGImagePropertyDPIHeight: page.dpi]
-        if type == .jpeg { props[kCGImageDestinationLossyCompressionQuality] = 0.85 }
-        CGImageDestinationAddImageFromSource(dest, src, 0, props as CFDictionary)
+        CGImageDestinationAddImageFromSource(dest, src, 0, imageProperties(page, type: type, quality: quality))
         guard CGImageDestinationFinalize(dest) else {
             throw ScanExportError(message: "Could not write \(url.lastPathComponent).")
         }
     }
 
-    private static func writePDF(_ pages: [ScannedPage], to url: URL) throws {
+    private static func imageProperties(_ page: ScannedPage, type: UTType, quality: ScanQuality) -> CFDictionary {
+        var props: [CFString: Any] = [kCGImagePropertyDPIWidth: page.dpi, kCGImagePropertyDPIHeight: page.dpi]
+        if type == .jpeg { props[kCGImageDestinationLossyCompressionQuality] = quality.jpeg }
+        // The scanner's TIFF is uncompressed (about 26 MB for an A4 page at 300 dpi); LZW keeps every pixel
+        // and makes the file much smaller.
+        if type == .tiff { props[kCGImagePropertyTIFFDictionary] = [kCGImagePropertyTIFFCompression: 5] }
+        return props as CFDictionary
+    }
+
+    /// The size in bytes of one page saved in this format and quality, found by writing it to memory
+    /// (nothing touches the disk). The Scan page multiplies it by the page count for "about 4 MB".
+    static func encodedSize(of page: ScannedPage, as format: ScanFormat, quality: ScanQuality) -> Int? {
+        let data = NSMutableData()
+        if format == .pdf {
+            var box = CGRect(x: 0, y: 0, width: 612, height: 792)
+            guard let consumer = CGDataConsumer(data: data),
+                  let context = CGContext(consumer: consumer, mediaBox: &box, nil),
+                  (try? drawPDF([page], quality: quality, into: context)) != nil else { return nil }
+            return data.length
+        }
+        guard let src = CGImageSourceCreateWithURL(page.url as CFURL, nil),
+              let dest = CGImageDestinationCreateWithData(data, format.type.identifier as CFString, 1, nil) else { return nil }
+        CGImageDestinationAddImageFromSource(dest, src, 0, imageProperties(page, type: format.type, quality: quality))
+        return CGImageDestinationFinalize(dest) ? data.length : nil
+    }
+
+    private static func writePDF(_ pages: [ScannedPage], quality: ScanQuality, to url: URL) throws {
         var first = CGRect(x: 0, y: 0, width: 612, height: 792)
         guard let context = CGContext(url as CFURL, mediaBox: &first, nil) else {
             throw ScanExportError(message: "Could not create \(url.lastPathComponent).")
         }
+        try drawPDF(pages, quality: quality, into: context)
+    }
+
+    /// One PDF page per scan, then closes the PDF.
+    private static func drawPDF(_ pages: [ScannedPage], quality: ScanQuality, into context: CGContext) throws {
         for page in pages {
-            guard let image = pdfImage(for: page) else {
+            guard let image = pdfImage(for: page, quality: quality) else {
                 context.closePDF()
                 throw ScanExportError(message: "Could not read a scanned page.")
             }
@@ -233,13 +324,13 @@ enum ScanExport {
 
     /// Colour and gray pages are stored as JPEG inside the PDF (a raw A4 scan at 300 dpi is about
     /// 26 MB); black and white pages stay lossless so text does not get fuzzy.
-    private static func pdfImage(for page: ScannedPage) -> CGImage? {
+    private static func pdfImage(for page: ScannedPage, quality: ScanQuality) -> CGImage? {
         guard let src = CGImageSourceCreateWithURL(page.url as CFURL, nil) else { return nil }
         if page.mode == .lineart { return CGImageSourceCreateImageAtIndex(src, 0, nil) }
         let data = NSMutableData()
         guard let dest = CGImageDestinationCreateWithData(data, UTType.jpeg.identifier as CFString, 1, nil) else { return nil }
         CGImageDestinationAddImageFromSource(dest, src, 0,
-            [kCGImageDestinationLossyCompressionQuality: 0.8] as CFDictionary)
+            [kCGImageDestinationLossyCompressionQuality: quality.jpeg] as CFDictionary)
         guard CGImageDestinationFinalize(dest),
               let jpeg = CGImageSourceCreateWithData(data, nil) else { return nil }
         return CGImageSourceCreateImageAtIndex(jpeg, 0, nil)
@@ -266,6 +357,15 @@ final class ScanModel: ObservableObject {
         didSet { UserDefaults.standard.set(format.rawValue, forKey: "scanFormat") }
     }
 
+    /// With PDF: a PDF for each page, instead of one PDF with all of them.
+    @Published var separatePDFs: Bool = UserDefaults.standard.bool(forKey: "scanSeparatePDFs") {
+        didSet { UserDefaults.standard.set(separatePDFs, forKey: "scanSeparatePDFs") }
+    }
+
+    @Published var quality: ScanQuality = ScanQuality(rawValue: UserDefaults.standard.string(forKey: "scanQuality") ?? "") ?? .balanced {
+        didSet { UserDefaults.standard.set(quality.rawValue, forKey: "scanQuality") }
+    }
+
     @Published private(set) var pages: [ScannedPage] = []
     @Published private(set) var selectedID: UUID?
     @Published private(set) var preview: NSImage?
@@ -273,6 +373,8 @@ final class ScanModel: ObservableObject {
     /// A save is writing the pages. The files it reads must stay until it is done, so pages cannot
     /// be deleted meanwhile.
     @Published private(set) var saving = false
+    /// A page file is being turned; it is replaced when done, so nothing else touches the pages until then.
+    @Published private(set) var rotating = false
     /// Files written by the last Save, for "Show in Finder".
     @Published private(set) var lastSaved: [URL] = []
 
@@ -290,6 +392,19 @@ final class ScanModel: ObservableObject {
     /// The scanner is in use right now; printing waits for this to end (see PrintModel.drain).
     var scanning: Bool { state == .scanning }
     var busy: Bool { state == .scanning || state == .waitingForPrinter }
+
+    /// Saving writes a file for each page, rather than one file with all of them.
+    var savesOneFilePerPage: Bool { format != .pdf || separatePDFs }
+
+    /// The quality choice does something: JPEG files, and PDFs with colour or gray pages (black and white
+    /// pages are stored without loss).
+    var qualityApplies: Bool {
+        switch format {
+        case .jpeg: return true
+        case .pdf: return pages.isEmpty ? mode != .lineart : pages.contains { $0.mode != .lineart }
+        case .png, .tiff: return false
+        }
+    }
 
     var selectedPage: ScannedPage? { pages.first { $0.id == selectedID } }
 
@@ -393,12 +508,61 @@ final class ScanModel: ObservableObject {
         }
     }
 
-    func delete(_ id: UUID) {
-        guard !saving, let i = pages.firstIndex(where: { $0.id == id }) else { return }
+    /// Asks before deleting a page; the page cannot be brought back. Cancel is the default button, so
+    /// pressing Return does not delete.
+    func confirmDelete(_ id: UUID) {
+        guard !saving, !rotating, let i = pages.firstIndex(where: { $0.id == id }) else { return }
+        let alert = NSAlert()
+        alert.messageText = pages.count == 1 ? "Delete this page?" : "Delete page \(i + 1)?"
+        alert.informativeText = "This page will be removed from the scan. This can’t be undone."
+        alert.addButton(withTitle: "Cancel")
+        alert.addButton(withTitle: "Delete").hasDestructiveAction = true
+        // A sheet on the app's window, like the Save dialog and the quit warning.
+        if let window = NSApp.keyWindow ?? NSApp.mainWindow {
+            alert.beginSheetModal(for: window) { response in
+                guard response == .alertSecondButtonReturn else { return }
+                Task { @MainActor in self.delete(id) }
+            }
+        } else if alert.runModal() == .alertSecondButtonReturn {
+            delete(id)
+        }
+    }
+
+    private func delete(_ id: UUID) {
+        guard !saving, !rotating, let i = pages.firstIndex(where: { $0.id == id }) else { return }
         try? FileManager.default.removeItem(at: pages[i].url)
         pages.remove(at: i)
         unsaved = true
         if selectedID == id { select(pages.isEmpty ? nil : pages[min(i, pages.count - 1)].id) }
+    }
+
+    /// Turns a page a quarter turn (the scan file itself is turned, so the preview, the thumbnail and
+    /// every saved format follow).
+    func rotate(_ id: UUID, clockwise: Bool) {
+        guard !saving, !rotating, let page = pages.first(where: { $0.id == id }) else { return }
+        rotating = true
+        // From the moment the turn starts, not when it ends: quitting or closing the window in between
+        // must ask first, as it does for any other change that is not saved.
+        unsaved = true
+        let url = page.url, dpi = page.dpi
+        Task {
+            defer { rotating = false }
+            do {
+                let thumb = try await Task.detached { () throws -> NSImage in
+                    try ScanImage.rotate(url, clockwise: clockwise, dpi: dpi)
+                    guard let thumb = ScanImage.downsampled(url, maxPixel: 220) else {
+                        throw ScanExportError(message: "Could not read the turned page.")
+                    }
+                    return thumb
+                }.value
+                guard let i = pages.firstIndex(where: { $0.id == id }) else { return }
+                pages[i].thumbnail = thumb
+                pages[i].revision += 1
+                if selectedID == id { select(id) }
+            } catch {
+                if state == .idle { state = .failed("Could not turn the page. \(error.localizedDescription)") }
+            }
+        }
     }
 
     func move(_ id: UUID, by offset: Int) {
@@ -437,13 +601,13 @@ final class ScanModel: ObservableObject {
 
     func save() {
         // Saving and scanning do not overlap: a failed save would replace the "scanning" state.
-        guard !pages.isEmpty, !saving, !busy, !starting else { return }
+        guard !pages.isEmpty, !saving, !rotating, !busy, !starting else { return }
         let panel = NSSavePanel()
         panel.title = "Save Scan"
         panel.nameFieldStringValue = defaultName + "." + format.fileExtension
         panel.allowedContentTypes = [format.type]
         panel.canCreateDirectories = true
-        if format != .pdf && pages.count > 1 {
+        if savesOneFilePerPage && pages.count > 1 {
             panel.message = "Each page is saved as its own file, numbered after this name."
         }
         // A sheet slides down from the title bar of the app's window, instead of a free panel that
@@ -459,12 +623,12 @@ final class ScanModel: ObservableObject {
     }
 
     private func write(to url: URL) {
-        let pages = pages, format = format
+        let pages = pages, format = format, separatePDFs = separatePDFs, quality = quality
         saving = true
         Task {
             defer { saving = false }
             do {
-                let written = try await Task.detached { try ScanExport.write(pages, as: format, to: url) }.value
+                let written = try await Task.detached { try ScanExport.write(pages, as: format, separatePDFs: separatePDFs, quality: quality, to: url) }.value
                 lastSaved = written
                 // Saved as they are now, unless the order was changed while it wrote.
                 if self.pages.map(\.id) == pages.map(\.id) { unsaved = false }

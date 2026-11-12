@@ -32,7 +32,8 @@ struct ScanViewer: View {
         }
         .frame(minWidth: 560, minHeight: 480)
         .navigationTitle(title)
-        .task(id: model.selectedID) {
+        // Also when the page is turned: the file is replaced, so the full-size copy has to be read again.
+        .task(id: "\(model.selectedID?.uuidString ?? "")/\(model.selectedPage?.revision ?? 0)") {
             scale = nil
             full = nil
             let wanted = model.selectedID
