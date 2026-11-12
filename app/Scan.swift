@@ -47,13 +47,14 @@ enum ScanPaper: String, CaseIterable, Identifiable {
 }
 
 enum ScanFormat: String, CaseIterable, Identifiable {
-    case pdf = "PDF", png = "PNG", jpeg = "JPEG"
+    case pdf = "PDF", png = "PNG", jpeg = "JPEG", tiff = "TIFF"
     var id: String { rawValue }
     var type: UTType {
         switch self {
         case .pdf: return .pdf
         case .png: return .png
         case .jpeg: return .jpeg
+        case .tiff: return .tiff
         }
     }
     var fileExtension: String { self == .jpeg ? "jpg" : rawValue.lowercased() }
@@ -203,6 +204,9 @@ enum ScanExport {
         }
         var props: [CFString: Any] = [kCGImagePropertyDPIWidth: page.dpi, kCGImagePropertyDPIHeight: page.dpi]
         if type == .jpeg { props[kCGImageDestinationLossyCompressionQuality] = 0.85 }
+        // The scanner's TIFF is uncompressed (about 26 MB for an A4 page at 300 dpi); LZW keeps every pixel
+        // and makes the file much smaller.
+        if type == .tiff { props[kCGImagePropertyTIFFDictionary] = [kCGImagePropertyTIFFCompression: 5] }
         CGImageDestinationAddImageFromSource(dest, src, 0, props as CFDictionary)
         guard CGImageDestinationFinalize(dest) else {
             throw ScanExportError(message: "Could not write \(url.lastPathComponent).")

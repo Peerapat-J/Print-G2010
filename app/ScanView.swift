@@ -12,7 +12,7 @@ struct ScanView: View {
         VStack(spacing: 0) {
             HStack(alignment: .top, spacing: 0) {
                 settings
-                    .frame(width: 200)
+                    .frame(width: 232)
                     .padding(16)
                 Divider()
                 VStack(alignment: .leading, spacing: 12) {
