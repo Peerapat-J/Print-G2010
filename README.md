@@ -35,7 +35,7 @@ Canon G20x0 series are cheap and we have a lot of them in my office but it's not
 - Prints the last page first, so the stack comes out with page 1 on top.
 - Shows what the printer is doing, and queues up several files.
 - Drag files up and down to change the order.
-- Scan from the glass in its own window: colour, gray or black and white, 75 to 600 dpi, several pages in one go. Save as one PDF or as PNG/JPEG pictures.
+- Scan from the glass in its own window: colour, gray or black and white, 75 to 600 dpi, several pages in one go. Save as one PDF, a PDF for each page, or PNG/JPEG/TIFF pictures; delete a page you do not want first.
 
 **Note:** Word and Pages documents need to be exported to PDF first.
 
