@@ -9,7 +9,7 @@
 <p align="center"><i>Add your files. Pick the pages. Print, in reading order.</i></p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/App-v1.2.0-8250df" alt="App: v1.2.0">
+  <img src="https://img.shields.io/badge/App-v1.3.0-8250df" alt="App: v1.3.0">
   <img src="https://img.shields.io/badge/macOS-14%2B-555555?logo=apple&logoColor=white" alt="macOS: 14+">
   <img src="https://img.shields.io/badge/Hardware-Apple%20silicon-6e56cf?logo=apple&logoColor=white" alt="Hardware: Apple silicon">
   <img src="https://img.shields.io/badge/Printer-Canon%20G2010-c1121f" alt="Printer: Canon G2010">
