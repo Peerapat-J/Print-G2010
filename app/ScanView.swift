@@ -70,6 +70,15 @@ struct ScanView: View {
                 Text(model.savesOneFilePerPage ? "One \(model.format.rawValue) file for each page."
                      : "One PDF with all the pages.")
                     .font(.caption).foregroundStyle(.secondary)
+                if model.qualityApplies {
+                    Text("Quality").font(.callout).foregroundStyle(.secondary).padding(.top, 8)
+                    Picker("Quality", selection: $model.quality) {
+                        ForEach(ScanQuality.allCases) { Text($0.rawValue).tag($0) }
+                    }
+                    .pickerStyle(.segmented).labelsHidden()
+                    Text("A smaller file looks a little rougher.")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
             }
             Spacer(minLength: 0)
         }

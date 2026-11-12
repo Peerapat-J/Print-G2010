@@ -60,6 +60,19 @@ enum ScanFormat: String, CaseIterable, Identifiable {
     var fileExtension: String { self == .jpeg ? "jpg" : rawValue.lowercased() }
 }
 
+/// How hard JPEG squeezes a picture: for JPEG files, and for colour and gray pages inside a PDF.
+enum ScanQuality: String, CaseIterable, Identifiable {
+    case small = "Small", balanced = "Balanced", high = "High"
+    var id: String { rawValue }
+    var jpeg: CGFloat {
+        switch self {
+        case .small: return 0.6
+        case .balanced: return 0.85
+        case .high: return 0.95
+        }
+    }
+}
+
 enum ScanState: Equatable {
     case idle
     case waitingForPrinter
@@ -215,9 +228,10 @@ enum ScanExport {
     /// Writes the pages: one PDF with a page per scan, or one file per scan (always for images, and for
     /// PDF when `separatePDFs` is on). Several files are numbered ("Scan 1.png", "Scan 2.png").
     /// Returns the files written.
-    static func write(_ pages: [ScannedPage], as format: ScanFormat, separatePDFs: Bool = false, to url: URL) throws -> [URL] {
+    static func write(_ pages: [ScannedPage], as format: ScanFormat, separatePDFs: Bool = false,
+                      quality: ScanQuality = .balanced, to url: URL) throws -> [URL] {
         if format == .pdf && !separatePDFs {
-            try writePDF(pages, to: url)
+            try writePDF(pages, quality: quality, to: url)
             return [url]
         }
         let ext = url.pathExtension.isEmpty ? format.fileExtension : url.pathExtension
@@ -236,21 +250,21 @@ enum ScanExport {
         }
         for (page, target) in zip(pages, targets) {
             if format == .pdf {
-                try writePDF([page], to: target)
+                try writePDF([page], quality: quality, to: target)
             } else {
-                try writeImage(page, type: format.type, to: target)
+                try writeImage(page, type: format.type, quality: quality, to: target)
             }
         }
         return targets
     }
 
-    private static func writeImage(_ page: ScannedPage, type: UTType, to url: URL) throws {
+    private static func writeImage(_ page: ScannedPage, type: UTType, quality: ScanQuality, to url: URL) throws {
         guard let src = CGImageSourceCreateWithURL(page.url as CFURL, nil),
               let dest = CGImageDestinationCreateWithURL(url as CFURL, type.identifier as CFString, 1, nil) else {
             throw ScanExportError(message: "Could not create \(url.lastPathComponent).")
         }
         var props: [CFString: Any] = [kCGImagePropertyDPIWidth: page.dpi, kCGImagePropertyDPIHeight: page.dpi]
-        if type == .jpeg { props[kCGImageDestinationLossyCompressionQuality] = 0.85 }
+        if type == .jpeg { props[kCGImageDestinationLossyCompressionQuality] = quality.jpeg }
         // The scanner's TIFF is uncompressed (about 26 MB for an A4 page at 300 dpi); LZW keeps every pixel
         // and makes the file much smaller.
         if type == .tiff { props[kCGImagePropertyTIFFDictionary] = [kCGImagePropertyTIFFCompression: 5] }
@@ -260,13 +274,13 @@ enum ScanExport {
         }
     }
 
-    private static func writePDF(_ pages: [ScannedPage], to url: URL) throws {
+    private static func writePDF(_ pages: [ScannedPage], quality: ScanQuality, to url: URL) throws {
         var first = CGRect(x: 0, y: 0, width: 612, height: 792)
         guard let context = CGContext(url as CFURL, mediaBox: &first, nil) else {
             throw ScanExportError(message: "Could not create \(url.lastPathComponent).")
         }
         for page in pages {
-            guard let image = pdfImage(for: page) else {
+            guard let image = pdfImage(for: page, quality: quality) else {
                 context.closePDF()
                 throw ScanExportError(message: "Could not read a scanned page.")
             }
@@ -284,13 +298,13 @@ enum ScanExport {
 
     /// Colour and gray pages are stored as JPEG inside the PDF (a raw A4 scan at 300 dpi is about
     /// 26 MB); black and white pages stay lossless so text does not get fuzzy.
-    private static func pdfImage(for page: ScannedPage) -> CGImage? {
+    private static func pdfImage(for page: ScannedPage, quality: ScanQuality) -> CGImage? {
         guard let src = CGImageSourceCreateWithURL(page.url as CFURL, nil) else { return nil }
         if page.mode == .lineart { return CGImageSourceCreateImageAtIndex(src, 0, nil) }
         let data = NSMutableData()
         guard let dest = CGImageDestinationCreateWithData(data, UTType.jpeg.identifier as CFString, 1, nil) else { return nil }
         CGImageDestinationAddImageFromSource(dest, src, 0,
-            [kCGImageDestinationLossyCompressionQuality: 0.8] as CFDictionary)
+            [kCGImageDestinationLossyCompressionQuality: quality.jpeg] as CFDictionary)
         guard CGImageDestinationFinalize(dest),
               let jpeg = CGImageSourceCreateWithData(data, nil) else { return nil }
         return CGImageSourceCreateImageAtIndex(jpeg, 0, nil)
@@ -322,6 +336,10 @@ final class ScanModel: ObservableObject {
         didSet { UserDefaults.standard.set(separatePDFs, forKey: "scanSeparatePDFs") }
     }
 
+    @Published var quality: ScanQuality = ScanQuality(rawValue: UserDefaults.standard.string(forKey: "scanQuality") ?? "") ?? .balanced {
+        didSet { UserDefaults.standard.set(quality.rawValue, forKey: "scanQuality") }
+    }
+
     @Published private(set) var pages: [ScannedPage] = []
     @Published private(set) var selectedID: UUID?
     @Published private(set) var preview: NSImage?
@@ -351,6 +369,16 @@ final class ScanModel: ObservableObject {
 
     /// Saving writes a file for each page, rather than one file with all of them.
     var savesOneFilePerPage: Bool { format != .pdf || separatePDFs }
+
+    /// The quality choice does something: JPEG files, and PDFs with colour or gray pages (black and white
+    /// pages are stored without loss).
+    var qualityApplies: Bool {
+        switch format {
+        case .jpeg: return true
+        case .pdf: return pages.isEmpty ? mode != .lineart : pages.contains { $0.mode != .lineart }
+        case .png, .tiff: return false
+        }
+    }
 
     var selectedPage: ScannedPage? { pages.first { $0.id == selectedID } }
 
@@ -567,12 +595,12 @@ final class ScanModel: ObservableObject {
     }
 
     private func write(to url: URL) {
-        let pages = pages, format = format, separatePDFs = separatePDFs
+        let pages = pages, format = format, separatePDFs = separatePDFs, quality = quality
         saving = true
         Task {
             defer { saving = false }
             do {
-                let written = try await Task.detached { try ScanExport.write(pages, as: format, separatePDFs: separatePDFs, to: url) }.value
+                let written = try await Task.detached { try ScanExport.write(pages, as: format, separatePDFs: separatePDFs, quality: quality, to: url) }.value
                 lastSaved = written
                 // Saved as they are now, unless the order was changed while it wrote.
                 if self.pages.map(\.id) == pages.map(\.id) { unsaved = false }
