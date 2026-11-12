@@ -73,7 +73,9 @@ struct ScannedPage: Identifiable {
     let url: URL
     let dpi: Int
     let mode: ScanMode
-    let thumbnail: NSImage
+    var thumbnail: NSImage
+    /// Goes up each time the file is rotated, so a view showing the full-size scan knows to load it again.
+    var revision = 0
 }
 
 // MARK: - scanimage
@@ -161,6 +163,46 @@ enum ScanImage {
         ]
         guard let cg = CGImageSourceCreateThumbnailAtIndex(src, 0, options as CFDictionary) else { return nil }
         return NSImage(cgImage: cg, size: NSSize(width: cg.width, height: cg.height))
+    }
+}
+
+extension ScanImage {
+    /// Turns the scan file a quarter turn, in place, without losing anything: the pixels are only moved,
+    /// and the file stays an uncompressed TIFF. A black and white scan (1 bit a pixel) is stored as
+    /// 8-bit gray afterwards, which PNG and PDF compress back down.
+    static func rotate(_ url: URL, clockwise: Bool, dpi: Int) throws {
+        guard let src = CGImageSourceCreateWithURL(url as CFURL, nil),
+              let cg = CGImageSourceCreateImageAtIndex(src, 0, nil) else {
+            throw ScanExportError(message: "Could not read the page.")
+        }
+        let w = cg.width, h = cg.height
+        let model = cg.colorSpace?.model
+        let gray = model == .monochrome
+        let space = (model == .monochrome || model == .rgb) ? cg.colorSpace! : CGColorSpaceCreateDeviceRGB()
+        let info = gray ? CGImageAlphaInfo.none.rawValue : CGImageAlphaInfo.noneSkipLast.rawValue
+        guard let ctx = CGContext(data: nil, width: h, height: w, bitsPerComponent: 8, bytesPerRow: 0,
+                                  space: space, bitmapInfo: info) else {
+            throw ScanExportError(message: "Not enough memory to turn the page.")
+        }
+        ctx.interpolationQuality = .none
+        if clockwise {
+            ctx.translateBy(x: 0, y: CGFloat(w)); ctx.rotate(by: -.pi / 2)
+        } else {
+            ctx.translateBy(x: CGFloat(h), y: 0); ctx.rotate(by: .pi / 2)
+        }
+        ctx.draw(cg, in: CGRect(x: 0, y: 0, width: w, height: h))
+        guard let turned = ctx.makeImage() else { throw ScanExportError(message: "Could not turn the page.") }
+        // Written next to the scan and swapped in, so a failure leaves the page as it was.
+        let temp = url.deletingLastPathComponent().appendingPathComponent("turning-\(UUID().uuidString).tiff")
+        guard let dest = CGImageDestinationCreateWithURL(temp as CFURL, UTType.tiff.identifier as CFString, 1, nil) else {
+            throw ScanExportError(message: "Could not write the turned page.")
+        }
+        CGImageDestinationAddImage(dest, turned, [kCGImagePropertyDPIWidth: dpi, kCGImagePropertyDPIHeight: dpi] as CFDictionary)
+        guard CGImageDestinationFinalize(dest) else {
+            try? FileManager.default.removeItem(at: temp)
+            throw ScanExportError(message: "Could not write the turned page.")
+        }
+        _ = try FileManager.default.replaceItemAt(url, withItemAt: temp)
     }
 }
 
@@ -287,6 +329,8 @@ final class ScanModel: ObservableObject {
     /// A save is writing the pages. The files it reads must stay until it is done, so pages cannot
     /// be deleted meanwhile.
     @Published private(set) var saving = false
+    /// A page file is being turned; it is replaced when done, so nothing else touches the pages until then.
+    @Published private(set) var rotating = false
     /// Files written by the last Save, for "Show in Finder".
     @Published private(set) var lastSaved: [URL] = []
 
@@ -413,7 +457,7 @@ final class ScanModel: ObservableObject {
     /// Asks before deleting a page; the page cannot be brought back. Cancel is the default button, so
     /// pressing Return does not delete.
     func confirmDelete(_ id: UUID) {
-        guard !saving, let i = pages.firstIndex(where: { $0.id == id }) else { return }
+        guard !saving, !rotating, let i = pages.firstIndex(where: { $0.id == id }) else { return }
         let alert = NSAlert()
         alert.messageText = pages.count == 1 ? "Delete this page?" : "Delete page \(i + 1)?"
         alert.informativeText = "This page will be removed from the scan. This can’t be undone."
@@ -431,11 +475,38 @@ final class ScanModel: ObservableObject {
     }
 
     private func delete(_ id: UUID) {
-        guard !saving, let i = pages.firstIndex(where: { $0.id == id }) else { return }
+        guard !saving, !rotating, let i = pages.firstIndex(where: { $0.id == id }) else { return }
         try? FileManager.default.removeItem(at: pages[i].url)
         pages.remove(at: i)
         unsaved = true
         if selectedID == id { select(pages.isEmpty ? nil : pages[min(i, pages.count - 1)].id) }
+    }
+
+    /// Turns a page a quarter turn (the scan file itself is turned, so the preview, the thumbnail and
+    /// every saved format follow).
+    func rotate(_ id: UUID, clockwise: Bool) {
+        guard !saving, !rotating, let page = pages.first(where: { $0.id == id }) else { return }
+        rotating = true
+        let url = page.url, dpi = page.dpi
+        Task {
+            defer { rotating = false }
+            do {
+                let thumb = try await Task.detached { () throws -> NSImage in
+                    try ScanImage.rotate(url, clockwise: clockwise, dpi: dpi)
+                    guard let thumb = ScanImage.downsampled(url, maxPixel: 220) else {
+                        throw ScanExportError(message: "Could not read the turned page.")
+                    }
+                    return thumb
+                }.value
+                guard let i = pages.firstIndex(where: { $0.id == id }) else { return }
+                pages[i].thumbnail = thumb
+                pages[i].revision += 1
+                unsaved = true
+                if selectedID == id { select(id) }
+            } catch {
+                if state == .idle { state = .failed("Could not turn the page. \(error.localizedDescription)") }
+            }
+        }
     }
 
     func move(_ id: UUID, by offset: Int) {
@@ -474,7 +545,7 @@ final class ScanModel: ObservableObject {
 
     func save() {
         // Saving and scanning do not overlap: a failed save would replace the "scanning" state.
-        guard !pages.isEmpty, !saving, !busy, !starting else { return }
+        guard !pages.isEmpty, !saving, !rotating, !busy, !starting else { return }
         let panel = NSSavePanel()
         panel.title = "Save Scan"
         panel.nameFieldStringValue = defaultName + "." + format.fileExtension

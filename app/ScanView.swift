@@ -84,8 +84,8 @@ struct ScanView: View {
                 Image(nsImage: image)
                     .resizable().scaledToFit()
                     .border(Color.secondary.opacity(0.35), width: 0.5)
-                    // On the paper itself, so it sits in the page's corner whatever the page's shape.
-                    .overlay(alignment: .topTrailing) { deleteButton }
+                    // On the paper itself, so the buttons sit in the page's corners whatever its shape.
+                    .overlay(alignment: .top) { pageTools }
                     .padding(12)
                     .onTapGesture(count: 2) { openWindow(id: "scan-preview") }
             } else if !model.busy {
@@ -119,23 +119,40 @@ struct ScanView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
-    /// A trash can in a circle on the corner of the page shown; it asks before deleting.
-    @ViewBuilder private var deleteButton: some View {
+    /// Buttons on the corners of the page shown: turn it left or right (top left), and a trash can that
+    /// asks before deleting (top right).
+    @ViewBuilder private var pageTools: some View {
         if let page = model.selectedPage {
-            Button { model.confirmDelete(page.id) } label: {
-                Image(systemName: "trash")
-                    .font(.system(size: 13, weight: .medium))
-                    .foregroundStyle(.red)
-                    .frame(width: 30, height: 30)
-                    .background(.regularMaterial, in: Circle())
-                    .overlay(Circle().stroke(Color.secondary.opacity(0.3), lineWidth: 0.5))
+            HStack(spacing: 8) {
+                circleButton("rotate.left", help: "Turn the page left", label: "Turn page left") {
+                    model.rotate(page.id, clockwise: false)
+                }
+                circleButton("rotate.right", help: "Turn the page right", label: "Turn page right") {
+                    model.rotate(page.id, clockwise: true)
+                }
+                Spacer(minLength: 0)
+                circleButton("trash", tint: .red, help: "Delete this page", label: "Delete page") {
+                    model.confirmDelete(page.id)
+                }
             }
-            .buttonStyle(.plain)
-            .disabled(model.saving)
+            .disabled(model.saving || model.rotating)
             .padding(8)
-            .help("Delete this page")
-            .accessibilityLabel("Delete page")
         }
+    }
+
+    private func circleButton(_ symbol: String, tint: Color = .primary, help: String, label: String,
+                              action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: symbol)
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(tint)
+                .frame(width: 30, height: 30)
+                .background(.regularMaterial, in: Circle())
+                .overlay(Circle().stroke(Color.secondary.opacity(0.3), lineWidth: 0.5))
+        }
+        .buttonStyle(.plain)
+        .help(help)
+        .accessibilityLabel(label)
     }
 
     @ViewBuilder private var pageStrip: some View {
@@ -178,10 +195,13 @@ struct ScanView: View {
             }
             .onDrop(of: [UTType.text], delegate: PageDropDelegate(target: page.id, model: model, dragging: $draggingPage))
             .contextMenu {
+                Button("Turn Left") { model.rotate(page.id, clockwise: false) }.disabled(model.saving || model.rotating)
+                Button("Turn Right") { model.rotate(page.id, clockwise: true) }.disabled(model.saving || model.rotating)
+                Divider()
                 Button("Move Left") { model.move(page.id, by: -1) }.disabled(number == 1)
                 Button("Move Right") { model.move(page.id, by: 1) }.disabled(number == model.pages.count)
                 Divider()
-                Button("Delete Page…") { model.confirmDelete(page.id) }.disabled(model.saving)
+                Button("Delete Page…") { model.confirmDelete(page.id) }.disabled(model.saving || model.rotating)
             }
     }
 
@@ -209,7 +229,7 @@ struct ScanView: View {
                 Text(saveLabel)
             }
             .controlSize(.large)
-            .disabled(model.pages.isEmpty || model.busy || model.saving)
+            .disabled(model.pages.isEmpty || model.busy || model.saving || model.rotating)
         }
     }
 
