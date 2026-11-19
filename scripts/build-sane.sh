@@ -94,9 +94,11 @@ install_name_tool -id "@loader_path/$LIB" "$OUT/lib/$LIB"
 otool -L "$OUT/bin/scanimage" | awk '/libusb-1.0/ {print $1}' | while read -r old; do
   install_name_tool -change "$old" "@loader_path/../lib/$(basename "$old")" "$OUT/bin/scanimage"
 done
-# dll.conf lists the backends to load; pixma.conf may stay empty (USB scanners are found by id).
+# dll.conf lists the backends to load. USB scanners are found by id, so pixma.conf only turns off
+# the network search (BJNP/MFNP broadcasts), which the G2010 never answers and which added about
+# 0.6 s to every scan before it started.
 echo pixma > "$OUT/etc/dll.conf"
-: > "$OUT/etc/pixma.conf"
+echo "networking=no" > "$OUT/etc/pixma.conf"
 codesign --force --sign - "$OUT/lib/$LIB" "$OUT/bin/scanimage"
 
 echo "Built: $OUT/bin/scanimage"
