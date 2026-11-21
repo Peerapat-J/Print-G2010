@@ -31,7 +31,7 @@ Canon G20x0 series are cheap and we have a lot of them in my office but it's not
 ## Features
 
 - Drop in PDFs or pictures, tick the ones you want, press Print.
-- Choose copies and pages for any file: all, odd, even, or something like `1, 3, 5-9`.
+- Choose copies and pages for any file: all, odd, even, or custom page number like `1, 3, 5-9`.
 - Prints the last page first, so the stack comes out with page 1 on top.
 - Shows what the printer is doing, and queues up several files.
 - Drag files up and down to change the order.
